@@ -1,0 +1,66 @@
+all:
+
+CC=gcc
+CXX=g++
+CXX=c:/MinGW/bin/g++
+
+RHOME=d:/duncan/Projects/R/R-check
+DEFINES=-DNO_PYCOM_IPROVIDECLASSINFO  -DUSE_R -DRDCOM_VERBOSE=1
+
+# If using Gcc <= 2.95, use -fvtable-thunks
+
+CXXFLAGS=-g -I$(RHOME)/src/include $(DEFINES) -Wno-deprecated
+CFLAGS=-g -I. -I$(RHOME)/src/include $(DEFINES) -I$(RHOME)/src/gnuwin32
+
+DLLTOOL=dlltool
+DLLWRAP=dllwrap
+
+DLLWRAP_FLAGS = --driver-name $(CXX) --dlltool-name $(DLLTOOL) --as $(AS) 
+LDLIBS=-L$(RHOME)/src/gnuwin32 -lR -lole32 -loleaut32 -luuid
+
+
+# This is for testing and only on my machine - DTL.
+ifdef USE_JASPER
+ HAZEL_SRC=compnt.c factory.c registry.c RCall.c
+ HAZEL_DIR=d:/duncan/Projects/R/COMIDispatchServer
+ HAZEL_OBJS=$(HAZEL_SRC:%.c=$(HAZEL_DIR)/%.o)
+ CXXFLAGS+=-I$(HAZEL_DIR) -DUSE_JASPER
+endif
+
+SERVER_OBJS=RCOMObject.o converters.o RUtils.o DllInit.o RCOMFactory.o Rinit.o SFuncs.o COMError.o
+ENGINE_DEF=RCOMServer.def
+
+EXE_OBJS=$(SERVER_OBJS) RDCOM.o
+
+PKG_OBJS=SFuncs.o RCOMObject.o converters.o RUtils.o COMError.o
+PKG_DEF=exports.def
+
+all: RDCOMServer.dll install
+
+RDCOMServer.dll: $(PKG_OBJS)
+	$(DLLWRAP) $(DLLWRAP_FLAGS) -o $@ $(PKG_OBJS)  \
+	  --def $(PKG_DEF) $(LDFLAGS) $(LDLIBS)		
+
+RDCOMEngine.dll: $(SERVER_OBJS) $(HAZEL_OBJS)
+	$(DLLWRAP) $(DLLWRAP_FLAGS) -o $@ $(SERVER_OBJS) \
+	  --def $(ENGINE_DEF) $(LDFLAGS) $(LDLIBS)	
+
+install: RDCOMEngine.dll RDCOM.exe
+	cp RDCOMEngine.dll $(RHOME)/library/RDCOMServer
+	cp RDCOM.exe $(RHOME)/library/RDCOMServer
+	cp RDCOMEngine.dll $(RHOME)/src/library/RDCOMServer
+	cp RDCOM.exe $(RHOME)/src/library/RDCOMServer
+	cp RDCOMEngine.dll ../inst/
+	cp RDCOM.exe ../inst
+
+
+RDCOM.exe: $(EXE_OBJS)
+	$(CXX) -o $@ $(EXE_OBJS) $(LDLIBS)
+
+
+RCOMFactory.o: RCOMFactory.cpp RCOMFactory.h
+DllInit.o: RCOMFactory.h DllInit.cpp
+RCOMObject.o: RCOMObject.h RCOMObject.cpp
+
+clean:
+	rm *.o

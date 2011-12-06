@@ -1,0 +1,161 @@
+\def\COMMethod#1{\textsl{#1}()}
+\author{Duncan Temple Lang\\
+Bell Labs, Lucent Technologies}
+\title{A COM Server Factory in R}
+\input{CMacros}
+\input{SMacros}
+\maketitle
+@
+\begin{abstract}
+ This describes a possible architecture for the DCOM servers
+ implemented in R.  The motivation is simply to allow S programmers to
+ define COM classes within the S language and make the functionality
+ of the COM objects available to other applications.  The model
+ emphasizes the dynamic implementation of COM servers within S.
+\end{abstract}
+
+
+@ We start by creating a single COM interface to R.  This provides the
+usual mechanisms for evaluating an R command given as a string and
+modifying the global name space by assigning, removing and retrieving
+variables and attaching a library.  We also provide a way to call
+arbitrary functions via the \COMMethod{call} method.
+
+The most important method of this server to make it extensible and
+provide a real COM server mechanism for R is the \COMMethod{new}
+method.  This allows COM clients to create instances of R COM classes
+simply by specifying their name. (We may be able to add ... as a
+parameter.)
+
+<<>>=
+
+interface RCOMServer {
+
+  IDispatch New(in string type, ...);
+  
+  Variant eval(in string cmd);
+
+  bool assign(in string name, in Variant val);
+  Variant get(in string name);
+  bool remove(in string name);
+
+  bool library(in string name);
+
+  Variant call(in string name, ...);
+
+};
+
+
+@ The \COMMethod{New} method allows this COM server to behave like a
+factory. By this we mean that COM clients request the factory 
+to create other servers. (See [client].)
+
+The implementation of the other methods is relatively straightforward
+and merely uses C level routines to call or emulate the corresponding
+S functions.  Note that we can define the server statically via IDL
+and then generate skeleton implementations which we can complete
+statically, i.e. ahead of time in C/\Cplus code.
+
+@ The implementation of the \COMMethod{New} method is the interesting
+part of the architecture.  We define a single \CplusClass{IDispatch}
+interface which we use as a generic and dynamic implementation for
+each R server object it creates.  We create a new class
+\CplusClass{RDynamicIDispatch} to do this.  When we create a new R COM
+server object, we create an instance of this class and provide it with
+information about the specific functionality it provides .
+
+To be an \CplusClass{IDispatch} class, the
+\CplusClass{RDynamicIDispatch} class must implement the following
+methods:
+<<>>=
+    /* IDispatch */
+ GetIDsofNames()
+ GetTypeInfoCount()
+ GetTypeInfo()
+ Invoke()
+
+    /* IUnknown */
+ QueryInterface()
+ AddRef()
+ Release()
+
+    
+
+@ A \CplusClass{RDynamicIDispatch} object contains an S object which
+defines the particular server.  This provides information about the
+methods and properties of the server.  We can think of this as being a
+simple named list of functions and a collection of UUIDs using the
+\SPackage{Ruuid} package \citep{pkg:Ruuid} by Robert Gentleman and
+Jeff Gentry.  We define an S4 class \SClass{RDynamicCOMServer} as
+follows:
+<<>>=
+setClass("RDynamicCOMServer",
+           methods="list",
+           uuids="list")
+
+@ For the moment, we will ignore properties and assume that the cient
+accesses these through explicit methods.  The methods and uuids
+elements must have the same names, i.e. there must be a one-to-one
+correspondence between them.  These define the names of the methods
+that a client can call.  The \Sfield{uuids} slot provides the unique
+identifiers for a method which allows a client to call the method via
+the \Croutine{Invoke} method.
+
+The constructor function \SFunction{RDynamicCOMServer} creates such an
+object and can create default UUIDs.
+
+<<>>=
+RDynamicCOMServer(
+  methods = list(hello = function(name) { cat(paste("Hello", name))}, 
+                 bye = function() {cat("Bye")}))
+
+
+@ 
+<<>>=
+RDynamicCOMServer <-
+function(methods, uuids = NULL, obj = new("RDynamicCOMServer"))
+{
+  obj@methods <- methods
+  if(is.null(uuids)) {
+    uuids <- lapply(names(obj@methods), getuuid)
+  }
+  obj@uuids <- uuids
+
+  obj
+}
+
+
+@ We can gather several of these objects together to define a
+``registry'' of COM server ``classes''.  These are of course S
+objects, but they define a COM class.
+
+
+@ 
+The
+\Croutine{GetIDsofNames} routine returns the unique identifier when a
+name in the list is requested by a client.
+
+
+@
+\section{The client}
+
+<<client>>=
+ r = ComObject("R.server")
+ obj = r.New("lm")
+ obj$fit()
+
+@
+\section{Non-Dynamic Servers}
+We should also be able to create non-dynamic servers in either of two
+ways.  Firstly, we would like to be able to create type information
+which by compiling C code that
+
+
+
+
+
+@
+\section{Acknowledgements}
+Many of the ideas were clarified in discussions with David James who
+as always provided useful insights and a perspective grounded in
+usability.  The errors are of course mine.

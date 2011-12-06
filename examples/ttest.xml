@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                         "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
+
+
+<article xmlns:r="http://www.r-project.org"
+	 xmlns:s="http://cm.bell-labs.com/stat/S4"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+         xmlns:com="http://www.microsoft.com"
+>
+<articleinfo>
+ <title>The t-test as a COM service</title>
+</articleinfo>
+
+<section id="server">
+<title>The Server</title>
+
+<invisible>
+<r:code>
+library(RDCOMServer)
+</r:code>
+</invisible>
+
+Here we define a simple COM server that has just two methods.
+The first is a wrapper around the <s:func>t.test</s:func> function.
+The second allows clients to generate a sample from Normal
+distribution.
+As usual, we combine the two methods into a list of functions
+and create a COM class definition using the
+the function <r:func>SCOMFunctionClass</r:func>.
+<r:code>
+def = SCOMFunctionClass(list(ttest = function(x, ...) t.test(as.numeric(x),...), rnorm = rnorm), name = "R.TTest")
+def@classId = getuuid("11D2A4BC-7EBC-4236-80FF-2588EFCD8821")
+</r:code>
+
+And next, we register the definition with R and the Windows registry
+so that it is now available to clients.
+<r:code>
+registerCOMClass(def, registry = TRUE)
+</r:code>
+</section>
+
+Note that in this case, we are providing a list of functions directly.
+This differs from the Normal distribution server in <link
+href="Sobject.html">Sobject</link>.  In that case, the list of
+functions used in a COM instance needed to share an environment, and a
+separate one for each COM instance.  As a result, there we used the
+<s:func>SCOMIDispatch</s:func> to define the COM class.  Here we use
+<s:func>SCOMFunctionClass</s:func> which takes the list of functions
+directly.
+
+
+<section id="client"> 
+<title>Client</title>
+
+Now we are ready to use this from a client.  Our example will use
+Perl.  We start by creating an instance of the COM class.
+
+<perl:code>
+<![CDATA[
+# Call with ActiveState Perl
+
+use Win32::OLE;
+
+$t = Win32::OLE->new("R.TTest") || die "Can't create R.TTest COM object";
+]]>
+</perl:code>
+
+Next, we call the <com:method>ttest</com:method> with 
+data stored in Perl.
+<perl:code>
+<![CDATA[
+# Following currently is transferred as a list in S, not a numeric.
+@x = (0.2795290,  1.2010954, -0.1396027,  0.1742421, -2.1921724 , 0.4139593, -0.3025258, -0.1818093,  0.6793734,  0.7978106);
+
+$val = $t->ttest(\@x);
+]]>
+</perl:code>
+
+The result is an S object of class <s:class>htest</s:class>.
+The converter mechanism in the <s:package>RDCOMServer</s:package>
+uses the default mechanism for exporting these non-primitive 
+objects and returns another COM object which provides access
+to all of the fields and attributes of this object and
+also allows one to call top-level S functions with
+this object as the first argument.
+
+Note how we get the <s:field>statistic</s:field>,
+<s:field>parameter</s:field> and <s:field>estimate</s:field> values as
+if they were regular properties of the COM or Perl object.
+<perl:code>
+<![CDATA[
+print "Result: $val\n";
+
+$x = $val->statistic;
+$d = $val->parameter;
+$mean = $val->estimate;
+print "Statistic: $x ($d) $mean\n";
+]]>
+</perl:code>
+
+Now, let's use the <com:method>rnorm</com:method>
+to generate data in the server, transfer it back
+to the client and then pass that back to the server
+in the call to <com:method>ttest</com:method>.
+(The round trips of the data can be avoided if we
+designed the COM object to have state and store the data
+locally. This is a very different idea, sometimes useful
+and sometimes not.)
+<perl:code>
+<![CDATA[
+print "Next stage\n";
+
+# Now we create a second COM object within S and 
+# use it to generate
+
+$normal = Win32::OLE->new("SNormal");
+@data = @{$normal->sample(100)};
+
+$val = $t->ttest(\@data);
+
+$x = $val->statistic;
+$d = $val->parameter;
+$mean = $val->estimate;
+print "Statistic: $x ($d) $mean\n";
+]]>
+</perl:code>
+
+</section>
+
+
+<python:code>
+from win32com.client import Dispatch
+
+t = Dispatch("R.TTest")
+x = (0.2795290,  1.2010954, -0.1396027,  0.1742421, -2.1921724 , 0.4139593, -0.3025258, -0.1818093,  0.6793734,  0.7978106)
+val = t.ttest(x)
+
+print val.statistic
+print val.parameter
+</python:code>
+</article>

@@ -1,0 +1,185 @@
+\documentclass{article}
+\usepackage{fullpage}
+\usepackage{times}
+\usepackage{hyperref}
+\def\COMMethod#1{\textsl{#1}()}
+
+\begin{document}
+\section{The Main Framework}
+As with all flexible pieces of software, there are many different ways
+to use the R DCOM server mechanism.  One can use the R server as an
+in-process or out-of-process server, i.e. embedded within the client
+or running as a separate, stand-alone application.  There are reasons
+to prefer each approach in different contexts.
+
+We focus more on the elements we use to provide COM objects to clients
+from within R.  We start with a simple fixed interface that is very
+similar to the existing COM interface provided by Thomas Baier.  This
+allows the client to 
+\begin{enumerate}
+\item initialize R, 
+\item evaluate S expressions sent in the form of strings, 
+\item source scripts,
+\item call S functions,
+\item assign and remove variables,
+\item query the names of existing variables,
+\item attach and detach libraries,
+\item create COM objects.
+\end{enumerate}
+
+While this is a convenient interface for rapidly connecting to S
+services, it requires that the clients understand the computational
+model in S and even the syntax. Sending S commands to the R
+interpreter means that Excel users, for example, must know and manage
+two systems explicitly.  Not only does sending S commands require they
+know the S language syntax, it also means that they must explicitly
+manage the global variables within S.  This makes the code highly
+non-modular and can be very complex to debug.  Instead, we want to
+provide them with a more typical object model that they will be
+familiar with from regular COM objects.  Here, the call methods
+provided by the object's class. These methods can query and modify
+local state preseved in the object. This avoids the sharing of global
+state across calls and allows for multiple instances of similar
+objects, potentially shared by multiple clients.  In general, this is
+a much better software model in terms of maintainability, reusability,
+verifiability and simply in terms of familiarity to non-S users.
+
+
+The \textit{basic} infrastructure that we use is quite simple.  (We
+will introduce different extensions that make it easier and more
+powerful.)  Basically, an S programmer will define a COM class using S
+functions and objects.  She exports this so it is available to clients
+by registering it with the R COM mechanism which in turn can enter it
+in the registry to be used in the regular COM manner.  This S-COM
+definition is stored in an S object and available to the basic,
+general COM server engine.  Basically, an S-COM class is associated
+with a name and unique class identifier (UUID).  These are entered
+into the registry so that clients can refer to them in order to create
+an instance of this class.  The S-COM class information is stored
+within the master S-COM classes definition object using this unique
+class identifier.  We have a single S-COM factory class that is used
+as a \textit{meta-factory}.  We create a separate instance of this
+factory class for each of the different S-COM classes.  Each factory
+instance is initialized with information about the S-level details of
+this class (i.e. the S functions used to implement the methods of the
+class).  When the factory's \COMMethod{CreateInstance} method is
+called (e.g. by \Croutine{CoCreateInstanceEx} in the client), the
+dynamic (IDispatch) COM object is created.  A client can get the
+identifier of a particular method using \COMMethod{GetIDsOfNames}.
+The S-COM mechanism queries the names of the available S functions and
+returns the identifier associated with the specified name.  When the
+client invokes a method in the object, the \COMMethod{Invoke} method
+of the IDispatch interface knows to lookup the relevant method using
+the method identifier.  The arguments are converted from
+\COMType{VARIANT}s in the COM world to S objects (using the same
+mechanism (and code) as in the \SPackage{RDCOMClient} package).
+Similarly, the return value from the S function is converted to a
+\COMType{VARIANT} and return at the conclusion of the
+\COMMethod{Invoke} method.
+
+
+
+
+constructor/generator functions.
+
+properties
+
+Exceptions
+
+\section{Event Handlers}
+
+
+\section{Details}
+We build a new front-end for R which is a DLL. When loaded, this
+starts the R interpreter and then loads the \SPackage{RDCOMServer}
+package.  This loads the S object describing the previously registered
+S-COM classes.  The routine \Croutine{DllGetClassObject} is used by
+the SCM to get a factory for creating COM objects of a particular
+class. When the SCM calls this, the routine converts the class
+identifier (CLSID) to a string and uses this to index the S-COM class
+definitions.  This element should be an object of class
+\SClass{SCOMDefinition}.  The factory object is given a reference to
+this object which it uses to create objects.
+
+The \COMMethod{CreateInstance} method of the factory uses the
+\SClass{SCOMDefinition} when creating the SCOM object.  We use
+different derived classes to support different ways to specify class
+definitions. For example, we support the basic SCOM object provided by
+a collection of functions that share a common environment using the
+\SClass{SCOMEnvironmentDefinition} class.  In this case, we call the
+generator function to create the list of functions that operate as
+methods.  Alternatively, we can use a class from the \SPackage{OOP}
+package via the \SClass{SCOMOOPDefinition}.  In this case, we create
+an instance of the object using the \SFunction{new} method for that
+OOP class.  Similarly, if we have a read-only object, then we can use
+regular functions that expect the object as the first or last
+argument.  And if the SCOM object does not need to store values across
+method calls, one can store simple functions or function names
+and have those invoked.
+
+We register a new SCOM class by adding it to the registry.  This is
+done once when the class is registered.  This involves two steps: i)
+adding the canonical COM entries to the registry, and ii) adding the
+\SClass{SCOMClass} to the S object that is used to store the
+collection of available COM classes.
+
+Registering the COM identifiers with the registry is quite simple.  We
+first generate a CLSID for the COM class.  This is created as a UUID,
+either with \executable{guidgen} or via the \SPackage{uuid} package.
+We convert this to a string.  Then we create a new key (folder) in the
+registry named \verb+HKEY_CLASSES_ROOT\CLSID\+\textit{actual class
+id}.  We put the convenient, client name for this class as
+the default value for that 
+
+\begin{verbatim}
+createRegistryKey("CLSID", clsid)
+setRegistryValue("CLSID", value = "friendly name")
+setRegistryValue(paste("CLSID", "InProcServer32", sep = "\\"), value="<wherever>\\RDCOMServer.dll")
+setRegistryValue(paste("CLSID", "ProgID", sep = "\\"), value=progId)
+
+createRegistryKey(friendlyName)
+setRegistryValue(paste(friendlyName, "CLSID", sep = "\\"), value=clsid)
+setRegistryValue(paste(friendlyName, "CurVer", sep = "\\"), value=version)
+\end{verbatim}
+These steps are provided as a function and use the SWinRegistry package.
+This removes the need to use the \executable{regsvr32.exe} program
+to register the classes.
+
+At this point, a client can identify an SCOM class by name (or CLSID)
+and it will be found in the registry and the RDCOMServer.dll will be
+loaded into the client. (Out-of-process servers not yet handled!)  The
+routine \Croutine{DllGetClassObject} in the RDCOMServer.dll is invoked
+when the SCM is looking for a factory for a particular COM class.  We
+generate an instance of the basic factory and initialize it with the
+relevant \SClass{SCOMDefinition} for that class.  Essentially, the COM
+registry points the SCM to this DLL to ask for a specific class
+identifier. The DLL responds only to those that are requested rather
+than having to push all of the class definitions when it is loaded.
+
+
+\section{S-level Control}
+It is convenient to be able to customize the behavior of the COM
+mechanism, both creating objects and how the lookup and dispatching of
+methods is performed.  In order to allow this, we provide the generic
+function \SFunction{createCOMObject} that is called by the
+\Croutine{CreateInstance} of the \CClass{RCOMFunctionFactory} class.
+This function is called with the S-level COM class definition
+(specified when registering the class)\footnote{Do we also want the
+UUID for the class?}
+
+
+
+\section{Efficiency and IDispatch}
+Clients must use the IDispatch interface.  This means that they must
+ask for the id of a method before invoking it. Also, data must be
+marshalled across as \COMType{VARIANT} objects.  These extra steps can
+degrade performance, especially if the user-level computations are
+short and the client and server are in different processes and worse
+still on different machines.  If we were to compile information into
+type libraries, the clients could avoid querying this information
+
+
+
+\end{document}
+
+

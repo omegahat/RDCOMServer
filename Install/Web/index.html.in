@@ -1,0 +1,151 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+<title>The RDCOMServer Package</title>
+</head>
+
+<body>
+<h1>The RDCOMServer Package (version @MAJOR_VERSION@.@MINOR_VERSION@-@PATCH_LEVEL@)</h1>
+
+This package provides a mechanism to export S <i>objects</i> (values,
+functions, collections of S functions, etc.)  as (D)COM objects in
+Windows.  One can define COM objects with methods and properties
+entirely within S and make them accessible to clients written in other
+languages and available to other processes.  Clients can treat these
+as regular COM objects and need not be aware that they are written in
+S.  One can also define event handlers entirely within S and connect
+them to DCOM event sources such as Excel or Active X controls.
+
+<p/> This package can be used along with the <a
+href="../RDCOMClient">RDCOMClient</a> package which provides
+user-level access from S to other COM servers. 
+The ability to export S objects as COM values is important
+for general bi-directional connectivity with other COM clients.
+
+<p/> The management of class in the Windows registry uses the general
+<a href="../SWinRegistry">SWinRegistry</a> package.  And the UUIDs
+used to uniquely identify classes, etc.  are generated using Robert
+Gentleman's <a
+href="http://www.bioconductor.org/repository/devel/package/html/Ruuid.html">Ruuid</a>
+package. 
+
+<p>
+
+This RDCOMServer package is different from the other <a
+href="http://sunsite.univie.ac.at/rcom/">RCOM package</a> from Thomas
+Baier which explicitly makes the R evaluator available.  The model in
+this package allows S programmers to define new COM classes in S and
+make arbitrary S functionality and data available in different forms
+to non-S programmers. Users of the objects do not have to know
+anything about the S language and its syntax. Instead, they use the
+objects as if they were local to their language and simply invoke
+methods and access properties in the usual way for that language.  In
+addition to exporting explicit COM definitions, it also supports
+returning arbitrary S objects, not limited to the primitive types and
+arrays of these.  Also, the package allows S programmers to define how
+the objects are published, and provides a flexible and extensible
+mechanism for implementing the invocation of methods and properties.
+So in these regards, it is a framework for enabling S programmers to
+provide COM objects via S to clients in the regular COM manner.  It
+simplifies the programming of COM clients using R and, together with
+the <a href="../RDCOMClient">RDCOMClient</a> package, provides greater
+choice in which language(s) one programs the computations.
+(See <a href="Docs/Paradigm.html">Paradigm.html</a> for more details.)
+
+<p>
+
+This RDCOMServer package provides an <a
+href="examples/Sengine.html">example server</a> which exports methods
+to access the R interpreter in much the same way that Thomas' RCOM
+does.  This is just a special case and serves as an example.  The server does
+not provide the important graphics device or R console however.
+
+<p>
+This package is also quite different from S-Plus's COM export facility.
+One can export collections of functions as regular COM methods and 
+invoke them from clients atomically. This is different from having
+to set the arguments one at a time in the object, invoke the Run method,
+and then retrieve the result.
+
+<p/>
+
+This RDCOMServer package provides a highly extensible mechanism for
+controlling the dispatch of methods and properties.  It is easy to
+create new dispatch mechanisms that find and invoke methods and
+properties in different ways.
+
+
+<p>
+<h2>Download</h2>
+
+<ul>
+  <li> <a href="@ZIP_FILE@">Windows Binary</a> 
+  <li> <a href="@TAR_SRC_FILE@">Source Code</a> .
+</ul>
+
+<p>
+
+To use this package you will need to also install
+the following packages:
+<ul>
+  <li> <a href="http://www.bioconductor.org/repository/devel/package/html/Ruuid.html">Ruuid</a> by Robert Gentleman
+  <li> <a href="http://www.omegahat.org/SWinRegistry">SWinRegistry</a>
+</ul>
+
+The <a href="../SWinTypeLibs">SWinTypeLibs</a> package can be useful
+for creating S COM classes for event handling, computing a local map
+for enumerated constants, or merely reading existing COM interface
+description into S.
+
+<p/>
+
+You can get binaries for these and install them simply by
+unzipping them from within in the <code>$R_HOME/library</code>
+directory.
+
+<p>
+
+<h2>Documentation</h2>
+
+<dl>
+  <dt>
+  <li> <a href="Docs/UserGuide.html">User Guide</a>
+  <dd> An early draft.
+
+  <dt>
+  <li> <a href="Docs/Paradigm.html">Paradigm</a>
+  <dd> A discussion of the different approaches to adding 
+    (D)COM support for R and why the full object model
+    is necessary.  This explains the motivation for a fully
+    general model.
+
+  <dt>
+  <li> <a href="examples">Annotated examples</a>
+  <dd>
+       An annotated collection of related server and client examples.
+
+   <dt>
+   <li> <a href="examples/event.html">Handling COM Events in R</a>
+   <dd> A description of how to use S functions to implement
+    COM event handlers, e.g. for Active X, Excel, etc.
+
+  <dt>
+  <li> <a href="FAQ.html">FAQ</a>
+  <dd> Frequently asked questions.
+</dl>
+
+<h2>Examples</h2>
+
+There are examples in the <a
+href="examples"><code>examples/</code></a> directory illustrating how
+to define and register COM classes from S.  In that directory and also
+the <code>tests/</code> directory, there are examples of how to use
+these from different higher-level languages inluding Java, Python,
+Perl and Visual Basic).
+
+<hr>
+<address><a href="http://www.stat.ucdavis.edu/~duncan">Duncan Temple Lang</a>
+<a href=mailto:duncan@wald.ucdavis.edu>&lt;duncan@wald.ucdavis.edu&gt;</a></address>
+<!-- hhmts start -->
+Last modified: @DATE@
+<!-- hhmts end -->
+</body> </html>

@@ -1,0 +1,676 @@
+<article
+         xmlns:r="http://www.r-project.org"
+         xmlns:c="http://www.c.org"
+	 xmlns:s="http://cm.bell-labs.com/stat/S4"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+         xmlns:com="http://www.microsoft.com"
+	 xmlns:omegahat="http://www.omegahat.org"
+         xmlns:vb="http://www.visualbasic.com"
+         xmlns:bioc="http://www.bioconductor.org"
+>
+
+<articleinfo>
+ <title>Using the RDCOMServer package</title>
+ <authorgroup>
+  <author>
+    <firstname>Duncan</firstname>
+    <surname>Temple Lang</surname>
+    <affiliation><ulink url="http://cm.bell-labs.com/stat/duncan">Statistic and Data Mining Resarch, Bell
+    Labs</ulink></affiliation>
+  </author>
+ </authorgroup>
+ <date/>
+</articleinfo>
+
+<abstract>
+
+This document provides a brief introduction to using the
+<omegahat:package>RDCOMServer</omegahat:package> package.
+This allows R programmers to define and export COM
+classes with code written entirely within the S language. 
+It illustrates how one can
+define servers to make them available to DCOM clients in
+different languages such as
+Visual Basic, Perl, Python, Matlab. 
+It also presents the different ways 
+that servers can be defined and implemented.
+Also the document illustrates how to customize the way the
+COM mechanism works and how to provide alternative method invocation
+facilities.
+
+</abstract>
+
+<section>
+ <title>Publishing a COM Class</title>
+
+At its simplest, a COM object in R is implemented 
+with a named collection of functions.
+The COM object is presented to the rest of the world
+as a Java- or C++-like object with methods and properties
+associated with the object.
+The object's methods are the S functions in the list.
+Clients identify the objects methods using the names in the S list. 
+So a Visual Basic client can invoke the DCOM object's methods
+and essentially end up calling the associated named R function
+within the list of  functions.
+
+<para/>
+The simple list of functions has one drawback.  Since R is a
+functional language, functions generally do not have a
+side-effects. As a result, the list of functions cannot easily share
+state as a Java or C++ object can.  The object does not have a natural
+location to store its internal variables.  In R, we can use lexical
+scoping and closures to allow some or all of these functions to share
+mutable state, i.e. variables that change across calls and are
+accessible to the different functions.  This allows two different
+instances of the same object to have their own, non-conflicting set of
+internal variables.  When using environments, we typically create a
+new list of functions for each new object in order to get a different
+environment that is independent of other objects. But again, we are
+dealing simply with a list of functions.
+
+<para/>
+In addition to the functions or methods, a COM object can also have
+properties that it makes accessible to clients.  At its simplest, the
+properties need only be given as names of variables. 
+Querying and setting them involves finding the location of the variale.
+And if we are using lexical scoping, these variables
+are naturally stored in the environment shared by the functions.
+
+<para/>
+There are a variety of other ways to define an S-COM class and arrange
+instances of such definitions. However, the <emphasis>simplest</emphasis> approach
+is to use closures and specify properties by name.  This involves
+defining a constructor function associated with the S-COM class.  This
+is used to create the list of functions that act as methods.  We also
+specify the names of the properties whose values can be found in the
+environment of these functions.  Next we specify a name for the S-COM
+class. And if we are being well-behaved, we specify a collection of
+strings providing a short description for each of the methods.
+
+<para/>
+Let's take a look at a simple example.  We will define a COM class to
+describe a Normal distribution. It has two properties: its mean and
+standard deviation. And it provides methods for generating a sample of
+<i>n</i> values, and computing quantiles, percentiles and density values.
+These functions share the mean and standard deviation values across
+calls. We can define a generator function (<s:func>g</s:func>) that
+provides these and the properties <s:var>mu</s:var> and
+<s:var>sigma</s:var>.
+<s:code>
+<![CDATA[
+g <- function(mu = 0, sigma = 1) 
+{
+  sample <- function(n) {
+     rnorm(as.integer(n), mu, sigma)
+  }
+
+  percentile <- function(q, lower = TRUE) {
+    pnorm(as.numeric(q), mu, sigma, lower.tail = as.logical(lower))
+  }
+
+  quantile <- function(p) {
+    qnorm(as.numeric(p), mu, sigma)
+  }
+
+  density <- function(x) {
+     dnorm(as.numeric(x), mu, sigma)
+  }
+
+  list(sample = sample, 
+       percentile = percentile,
+       quantile = quantile, 
+       density = density,
+       .properties = c("mu", "sigma"),
+       .help = c(sample = "generate a sample of values",
+                percentile = "CDF values from this distribution",
+                quantile = "quantile values from this distribution",
+                density = "values of the density function for this distribution"
+                ))
+}
+]]>
+</s:code>
+Now, whenever we need a new instance of this Normal distribution, we
+can invoke this generator function.  Note that we return the functions
+in a named list.  These functions are simple wrappers to the regular
+normal distribution functions in S, and they perform appropriate
+simplifications, accessing the parameters and error checking.  
+These just provide a context for these existing functions.
+
+<para/>
+In addition to the functions, we also specify the names of the
+properties and the help in this list to round out our definition.
+
+<para/>
+At this point, we have almost enough information to use this as part
+of an S-COM class.  All that remains is to make this visible to client
+applications.  We need to give the class a unique identifier (a UUID)
+and also a regular name that the client can use.
+Then we need to put the S code somewhere so that
+when it is needed COM and R can create a suitable object.
+The steps involve in ``publishing'' this definition
+are
+<itemizedlist>
+<listitem> create an appropriate type of SCOMClass obect
+  to represent the definition, e.g. <s:class>SCOMIDispatch</s:class>;
+</listitem>
+<listitem> store the definition as an S object so that it can be  used
+  when R is started;
+</listitem>
+<listitem> add an entry to the Windows registry to expose
+ the class identifier (UUID) and associate it with a DLL or EXE.
+</listitem>
+</itemizedlist>
+
+These steps are achieved in S with the following commands.  We create
+the definition combining the generator function and the name
+(<com:name>S.Normal</com:name>) using the function
+<s:func>SCOMIDispatch</s:func>.  This creates an object of class
+<s:func>SCOMIDispatch</s:func> that describes the class definition.
+It also generates the UUID for the class identifier.  And next, we use
+<s:func>registerCOMClass</s:func> to store the definition in an S list
+that can be found when R starts up, and also add the necessary
+information to the Windows registry.  <s:code> def = SCOMIDispatch(g,
+"S.Normal") registerCOMClass(def) </s:code>
+This uses the <omegahat:package>SWinRegistry</omegahat:package> package to
+access the Windows registry from R.  The UUIDs are generated using the
+<bioc:package>Ruuid</bioc:package> package.
+
+<para/>
+
+By default, <s:func>registerCOMClass</s:func> stores the S definition
+of the COM class in a named list indexed by UUIDs. It then serializes
+this list to a file so that it is available to future R sessions when
+the class definition is needed.  By default, we keep this list of S
+COM class definitions in a file named <file>RCOMClasses.rda</file> in
+the directory in which <s:package>RDCOMServer</s:package> is
+installed. You can specify the location of the file when registering
+the class via the <s:arg>rda</s:arg> argument.  However, you must also
+instruct R to find that file in future sessions.
+
+<para/>
+Instead of using a centralized list to store the S COM class definitions,
+we can store each class definition separately and add information
+to the Windows registry entry for the class telling R where to find this
+definition. When <s:func>GetCOMClassDef</s:func> is
+called to resolve the class definition for the UUID,
+it looks for an entry named "rda" in the registry entry for the UUID.
+If it exists, this should give the name of the rda file which contains
+the serialized class definition.
+
+<para/>
+
+This is probably a more flexible approach to management but it
+requires more action on the creator of the class.
+
+<para/>
+
+In addition to looking for the "rda" entry,
+<s:func>GetCOMClassDef</s:func> also looks for an entry named
+"profile". If that exists, it is assumed to be the name of an S source
+code file and it is read via <s:func>source</s:func>.  This provides a
+way to execute code each time an object from a particular COM class is
+created.
+
+
+</section>
+<section>
+ <title>The COM Mechanism</title>
+When a client asks for an instance of an S-COM object e.g. in Perl
+<literal>Win32::OLE-&gt;new()</literal>, COM queries the class identifier in the
+Windows registry and loads the associated RDCOMServer.dll (or EXE).
+Then it asks the DLL for a factory for the specified class ID.  In our
+case, we create an instance of the basic <c:class>RCOMFactory</c:class> by first
+resolving the class ID within the list of the registered S-COM
+classes.  Then the COM mechanism within the client asks the factory to
+create an instance of the given class (using the
+<c:method>CreateInstance</c:method> method).  This ends up with a call to
+<s:func>createCOMObject</s:func> with the S-COM class definition as the
+only argument.  There are different methods for this generic function,
+but they are all expected to do the same general thing: create a C++
+object that represents the S-COM object and knows how to lookup names
+and invoke methods and access properties.
+
+There are a variety of ways to handle these definitions and create
+associated C++ objects. Basically, there are several degrees of
+freedom.  We can put the computations in C++ or in S or as some
+hybrid.  For better understanding and easier experimentation, we
+implement the methods for looking up names, invoking methods and
+accessing properties in S functions.  Good design of C++ classes
+allows us to implement this flexibly and easily move between different
+implementations and the different languages.  And as efficiency
+becomes more important, we can move towards C++ implementations.
+
+In the case of a <s:class>SCOMIDispatch</s:class>, the
+<s:func>createCOMObject</s:func> performs the following steps.
+<itemizedlist>
+<listitem> call the generator function in the class definition
+ to create the instance of the S object. This creates the
+ relevant list of functions which are used as the methods.
+ The environment of the first function in the list will be used to 
+ find properties. 
+</listitem>
+<listitem>   The list of methods, etc. returned by the generator
+  is passed as an argument in a call to <s:func>COMSIDispatchObject</s:func>.
+  This is another generator function that provides two methods,
+  one for processing COM invocations and property access,
+  and a second for mapping names to integer ids.
+  These methods correspond to the IDispatch methods
+  <c:method>Invoke</c:method> and <c:method>GetIDsOfNames</c:method>.
+</listitem>
+<listitem> These two functions returned from the call to <s:func>COMSIDispatchObject</s:func>
+  are passed to a C++ level constructor for the <c:class>RCOMSObject</c:class> class.
+  When COM requests are processed by this object, the methods in this object pass
+  their arguments to the corresponding functions. These are responsible for 
+</listitem>
+</itemizedlist>
+
+</section>
+<section>
+  <title>Different Stategies</title>
+
+If one wants to explore different ways to handle the invocations, one
+can define a new method for <s:func>createCOMObject</s:func>.  For
+example, suppose we want to export top-level functions simply by
+name. Rather than fetching the functions when the object is defined,
+we want client calls to find the <emphasis>current</emphasis>
+definition of the function.  In this context, we have no need for
+lexical scoping to maintain state across calls.  To define the COM
+class, all we need is the names of the functions and the names of the
+properties corresponding to top-level variables.  For good measure, we
+will also allow the developer to supply a list of named-values which
+are to be treated as properties.  For simplicity, when we create an
+instance of this object, we will make these available to the functions
+being evaluated by evaluating the call in an environment which
+contains these.
+
+<para/>
+So we define a new S class to represent this
+type of COM definition:
+<s:code group="namedFunctions.S">
+setClass("SCOMNamedFunctionClass",
+	  representation("SCOMClass",
+              # can be named character vector to provide aliases for COM view.
+              # e.g. functions=c(normal="rnorm", ...)
+	                 functions="character",
+                         propertyNames="character",
+                         properties="list"))
+</s:code>
+
+Next, we create a constructor function for this class.
+<s:code group="namedFunctions.S">
+SCOMNamedFunctionClass =
+ function(functions, name, ..., propertyNames = character(0),
+          help = "", def = new("SCOMNamedFunctionClass"))
+{
+  def = .initSCOMClass(def, name = name, help = help) 
+
+  def@functions = functions
+  if(length(names(def@functions)) == 0)
+    names(def@functions) = def@functions
+  which = names(def@functions) == ""
+  if(any(which))
+     names(def@functions)[which] = def@functions[which]
+
+  def@propertyNames = propertyNames
+  def@properties = list(...)
+
+  def
+}
+</s:code>
+
+So if a programmer wants to, for example, expose the functions
+<s:func>rnorm</s:func>, <s:func>hist</s:func> and 
+<s:func>boxplot</s:func>,
+she would create a definition for the COM class as 
+<s:code>
+ def = SCOMNamedFunctionClass(c("rnorm", "hist", "boxplot"), name = "UnivariateNormalSampler") 
+</s:code>
+and simply register it
+<s:code>
+ registerCOMClass(def)
+</s:code>
+In this case, the names of the functions might be a little peculiar
+to non-S users. Instead, we can make them accessible as different method names
+simply by providing the desired names in the character vector.
+<s:code>
+ def = SCOMNamedFunctionClass(c(normal = "rnorm", 
+                                historgram = "hist", 
+                                boxplot = "boxplot"), name = "UnivariateNormalSampler") 
+</s:code>
+
+<para/>
+
+
+At this point, the COM definition is accessible to clients.  They can
+create an instance of the object, but we still have to define how we
+will create a C++-level object to handle this object and its methods.
+We do this by providing appropriate methods for the invoke and
+<c:method>getIDsOfNames</c:method> methods at the S level.  We define
+a method for <s:func>createCOMObject</s:func> for the
+<s:class>SCOMNamedFunctionClass</s:class> and have it create a
+suitable C++ object that will dispatch the COM methods correctly. To
+do this, we can mimic the <s:func>COMSIDispatchObject</s:func>
+function in the <omegahat:package>RDCOMServer</omegahat:package> package. We pass it
+the names of the functions and properties 
+and the list of property values.
+These are the methods and values to expose.
+This handler must do two things:
+<itemizedlist>
+<listitem> 
+ lookup names and map them to integers
+</listitem>
+<listitem>
+ handle property access and method invocation
+</listitem>
+</itemizedlist>
+We create two functions to do this that have access to the functions
+and properties from the COM class definition.  We can then pass these
+two S functions to the C routine <c:routine>R_COMSObject</c:routine>
+to create the C++-level class that handles the dispatching by handing
+off to these two functions.  While this all seems rather indirect, it
+is actually quite simple in practice.  If we were using the OOP
+package, it would amount only to extending the invoke method in a
+trivial way. It is made more complicated because we are talking about
+closures, etc. in ad hoc ways.
+
+<para/>
+
+Let's consider the two functions.  The first one has to map names of
+functions, properties and function parameters (argument names) to
+integers in an invariant way.  The names of the methods and properties
+are given and fixed.  The only issue we have to concern ourselves with
+is the parameter names. We do this by
+
+We have two choices for this.
+<orderedlist>
+<listitem>
+ compute the names of all the arguments based on their current
+ definitions, or
+</listitem>
+<listitem>
+ dynamically manage the collection of requested names
+ based on the clients.
+</listitem>
+</orderedlist>
+The first of these we can do with the function
+<s:func>computeCOMNames</s:func>.  The second approach requires that
+we use a closure to manage a named vector of integers that provides
+the map between the names and their integer values.  We provide a
+single function -- <s:func>lookup</s:func> -- to access this map.  If
+given names, it lookups them up and returns the associate integers.
+If any name is not in the map, the function first adds these to the
+map.  Alternatively, if the function is given integers, it returns the
+associated names.  And finally, for convenience, if the function is
+called with no arguments, it returns the current value of the map, a
+named integer vector.
+
+<para/>
+The definition of this map management function
+is given below. 
+<s:code group="namedFunctions.S">
+<![CDATA[
+COMNameManager <-
+function(map = integer(0))
+{
+ if(length(map) && !(is.numeric(map) && !is.null(names(map)))) {
+   tmp <- 1:length(map)
+   names(tmp) <- as.character(map)
+   map <-  tmp
+ }
+
+
+ lookup <-
+   function(name) {
+ 
+     if(missing(name))
+      return(map)
+
+     if(is.numeric(name)) {
+       return(names(map)[name])
+     }
+
+     idx <- match(name, names(map))
+
+     if(any(is.na(idx))) {
+       n <- name[is.na(idx)]
+       orig <- length(map) + 1
+       tmp <- seq(from = orig, length = length(n))
+       names(tmp) <- n
+
+       map <<- c(map, tmp)        
+       idx[is.na(idx)] <- seq(orig,  length = length(n))
+     }
+
+     as.integer(idx)
+   }
+
+  lookup
+}
+]]>
+</s:code>
+This generator returns the <s:func>lookup</s:func> function.
+Note that one can specify an initial value for
+the map, either as map or a vector of names.
+
+<s:code  group="namedFunctions.S">
+<![CDATA[
+SCOMNamedFunctionDispatch =
+#
+# Generator for handling IDispatch at the S level.
+# 
+function(funs, properties, propertyNames, nameMgr = COMNameManager())
+{
+  isProperty = function(name) {
+    name %in% c(names(properties), propertyNames)
+  }
+
+  setProperty = function(name, val) {
+    if(name %in% names(properties))
+      properties[[name]] <<- val
+    else if(name %in% propertyNames)
+      assign(name, val, envir = globalenv())
+  }
+
+  getProperty = function(name) {
+    if(name %in% names(properties))
+      properties[[name]]
+    else if(name %in% propertyNames)
+      get(name, envir = globalenv())
+  }
+
+  invoke =
+   function(id, method, args, namedArgs) {
+     if(length(namedArgs)) {
+       names(args)[1:length(namedArgs)] = nameMgr(namedArgs)
+     }
+     args = rev(args)
+
+     methodName = nameMgr(id)
+
+     if(!(methodName %in% names(funs)) &&  any(method[-1])) {
+       if(!isProperty(methodName)) 
+          stop(methodName, " is not a property")
+         
+       if(method[2]) {
+          getProperty(methodName)
+       } else {
+          setProperty(methodName, args[[1]])
+       }
+     } else {
+       if(!method[1])
+         return(COMError("DISP_E_MEMBERNOTFOUND", className = c("COMReturnValue", "COMError")))
+       else
+         eval(do.call(funs[methodName], args), envir = globalenv())
+     }
+  }
+
+  list(Invoke= invoke, GetNamesOfIDs = nameMgr)	
+}
+]]>
+</s:code>
+
+
+And finally, we define a method for this type of definition for
+<s:func>createCOMObject</s:func>
+<s:code group="namedFunctions.S">
+setMethod("createCOMObject", "SCOMNamedFunctionClass", 
+   function(def) {
+     obj = SCOMNamedFunctionDispatch(def@functions, def@properties, def@propertyNames)
+    .Call("R_RCOMSObject", obj)
+   })
+</s:code>
+
+
+We have shown one mechanism for controlling the way dispatch and name
+lookup is done.  It should be clear that S programmers can define
+additional mechanisms entirely within S.  The simplest mechanism is to
+use the <s:func>COMSIDispatchObject</s:func>, but even that is a
+choice. Essentially, one must create a C++ object that is derived from
+the <c:class>RCOMObject</c:class> in the particular method of the
+function <s:func>createCOMObject</s:func>.
+
+<para/>
+
+<section>
+ <title>Logging calls</title> Another example of where this
+flexibility is important is if we want to keep track of what methods
+are being called for performance, surveillance, security or error detection
+purposes.  For example, we might want to write an entry in a log file
+about which methods and properties were accessed.  It is inconvenient
+to modify each of the methods to add code to log this information. It
+is also not possible to explicitly intercept property access unless we
+take over the invocation mechanism. So the simplest, non-intrusive
+approach is to provide an alternative dispatch mechanism. We do this
+by using a different function to provide the lookup and invocation
+mechanism.  The invoke method would perform the logging.  It would
+merely open a log file when the object is created, write an entry in
+the log file for each call to <s:func>invoke</s:func> and close the
+file when the object is ultimately released.  We should note that we
+really want to extend the <s:func>invoke</s:func> method of the
+<s:func>COMSIDispatchObject</s:func> "class".  Note that if were using
+the OOP class mechanism, we could do this more naturally via
+extension.
+</section>
+
+<section>
+ <title>Destructor Functions</title> 
+Some readers may recognize that there is apparently no way for us to
+automatically perform clean up on the COM object at the S-level,
+e.g. to close the file when the object is no longer in use.  In fact,
+there is. If the list of functions passed to
+<s:func>COMSIDispatchObject</s:func> has length 3, then the third
+entry is used as a destructor function which is called when the
+C++-level COM server object is no longer needed.  This is called with
+no arguments. This function can be used to perform any cleanup actions
+such as removing data, closing files, etc.  The information it needs
+should be available to it from its own environment.
+
+</section>
+
+<para/> 
+
+We have provided a dispatch mechanism for a simple list of functions,
+a list of related functions that share environments and, in this
+document, a handler for named functions.
+
+</section>
+
+<section>
+ <title>Methods for <s:func>createCOMObject</s:func></title>
+The choice of the <s:class>SCOMIDispatch</s:class> to represent the class
+definition will be typical. However, there are other choices and the
+choice determines how methods and properties are processed.
+Essentially, the class used to represent the definition controls how
+the COM instances are generated from this class.  When a client asks
+for a new S COM object, the S mechanism finds the definition and then
+calls <s:class>createCOMObject</s:class>.  This is a generic function and we
+have methods for different <s:class>SCOMClass</s:class> objects.  What these
+methods for <s:func>createCOMObject</s:func> do is to create the
+appropriate C++-level object that handles the invocation of methods
+and property access.  And these different classes process the S-COM
+class definition differently.  In the case of the
+<s:class>SCOMIDispatch</s:class> class, the <s:func>createCOMObject</s:func> calls
+the generator function to create the instance of the S object.  Then
+it calls another generator function which is used to manage the lookup
+of names and dispatch of methods and finally 
+
+
+<section>
+  <title>Generic COM Object</title> 
+
+When invoking a COM method or returning a COM property results in an
+object that is not a basic S primitive (e.g. integer, numeric,
+character or logical vector), the S-COM mechanism has to determine how
+to represent the S object to COM.  It does this by calling the
+<s:func>createCOMObject</s:func> function with the S object as the
+argument.  This generic function calls the appropriate method for this
+object. If there is a registered method, that is called.  Otherwise,
+the default method creates a generic S-COM object.  This makes the
+elements in the S list and its attributes available as properties.  It
+also allows the client to invoke arbitrary S top-level functions
+with the S object as the first argument.
+
+</section>
+
+<section>
+ <title>S Matrix class as a COM object</title>
+
+We have defined a method for <s:method>createCOMObject</s:method> to
+handle matrix objects.  The function <s:func>matrixCOMHandler</s:func>
+is used within the method to create a closure that 
+provides COM methods for accessing the matrix.
+The COM methods include
+<variablelist>
+<title></title>
+<varlistentry><term>values</term>
+<listitem>retrieve all the values as an array.
+</listitem>
+</varlistentry>
+<varlistentry><term>dim</term>
+<listitem>
+an array of length 2 giving the dimensions
+of the S matrix.
+</listitem>
+</varlistentry>
+<varlistentry><term>column</term>
+<listitem>returns the values in a particular column
+as a COM array.
+</listitem>
+</varlistentry>
+<varlistentry><term>row</term>
+<listitem>returns the values in a particular row
+as a COM array.
+</listitem>
+</varlistentry>
+<varlistentry><term>element</term>
+<listitem>returns an individual entry in the
+matrix.
+</listitem>
+</varlistentry>
+<varlistentry><term>nrow</term>
+<listitem>returns the number of rows in the matrix.
+</listitem>
+</varlistentry>
+<varlistentry><term>ncol</term>
+<listitem>returns the number of columns in the matrix.</listitem>
+</varlistentry>
+<varlistentry><term>rownames</term>
+<listitem>returns an array  of strings giving the
+names of the records/rows or the
+NULL value.
+</listitem>
+</varlistentry>
+<varlistentry><term>colnames</term>
+<listitem>returns an array  of strings giving the
+names of the variables/columns or the
+NULL value.
+</listitem>
+</varlistentry>
+</variablelist>
+
+</section>
+
+</section>
+</article>

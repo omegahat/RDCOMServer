@@ -1,0 +1,53 @@
+<html>
+<head>
+<title>FAQ for RDCOMServer package</title>
+</head>
+
+<body>
+<dl>
+ <dt>
+ <li> When I try to register a COM class from R, I get an error 
+  about not being able to open the key CLSID.
+  What's the problem?
+ <dd>
+   This occurs when R tries to add the class identifier to the
+  Windows registry but does not have permission to write 
+  in the registry. You need to have the appropriate privileges.
+
+
+  <dt>
+  <li> When I try to create a COM object in R from a client
+   application (e.g. Perl, Python,...), I get error messages
+   about missing DLLs. What this?
+  <dd>
+    You need to have the directory $R_HOME/bin  in your path
+   so that the system can find the file R.dll. 
+   R_HOME is the location where R was installed. Add this to your
+   path in the appropriate manner for your environment,
+   e.g. by right clicking on the My Computer icon and selecting
+   its Properties entry and then the Advanced tab;
+   if you are using a Unix-like shell (e.g. bash or tcsh), set
+  the path there, e.g.
+    export PATH=$R_HOME/bin:$PATH
+ or
+    set path= ($path $R_HOME/bin)
+
+ 
+  <dt>
+  <li> When I run an client that tries to create a COM object from R,
+  I get the error message
+<pre>
+Error: R.DLL version does not match
+</pre>
+    Do you know what the problem is?   
+  <dd>
+   Yes, it is that system is finding a version of R.dll in your path
+  that does not correspond to the version of R_HOME that is used
+  to find the R packages.  When we load the R.dll, that is found in your path.
+  When we find the R packages, we look either at the value of the R_HOME 
+  environment variable, or we look in the registry to see if R_HOME has been
+  registered.  The path and the location of R_HOME should agree. 
+</dl>
+
+</body>
+</html>

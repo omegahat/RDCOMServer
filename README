@@ -1,0 +1,22 @@
+
+The RDCOMServer.dll (need different name) is located in the top
+directory of the installed RDCOMServer package.  One registers servers
+to use this DLL.  You will need to have $R_HOME/bin in your path to
+run any executable that loads this DLL.  Also, that DLL needs to find
+the appropriate value of R_HOME so that it can find the packages, etc.
+To do this, we put this information in the registry when we install
+the package. To do this, run the registry.S script as
+
+   Rterm --vanilla < registry.S
+   
+
+
+Tests & Examples:
+
+There are some tests and examples in the package.
+The normal.S file in the examples/ directory registers
+a server with program id  "Normal". The files in 
+in the tests/ directory illustrate how to create and 
+call methods for that class from a variety of different
+languages: Java, Perl, Visual Basic.
+

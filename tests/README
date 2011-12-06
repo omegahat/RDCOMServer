@@ -1,0 +1,11 @@
+
+
+You will need to have $R_HOME/bin in your path to run these.
+It also helps to have R_HOME set to the appropriate value.
+
+Server.S -  S-COM server definition for testing basic arrays.
+TestArrays.pl - Perl script for calling functions in the Server.S object.
+
+
+
+Need to check we can handle NULL objects, S4 objects, S3 objects.

@@ -1,0 +1,212 @@
+<html>
+<head>
+<title>Todo List for the RDCOMServer package.</title>
+</head>
+<body>
+ <dl>
+
+  <dt>
+  <li>  Make unregisterCOMClass be able to work from a clsid or a name.
+ <dd>  Currently only needs the name, but what if I have the CLSID.
+       It can find the name from the clsid.
+
+  <dt>
+  <li> Hide the functions that are called from the C++ code 
+   that users don't need to see.
+  <dd>  Use the namespace identifier in the C code.
+  <br>
+  The key functions are 
+  registerCOMClass,  unregisterCOMClass. 
+
+
+  <dt>
+  <li> Keyword arguments in Python don't seem to be making it across the interface.
+  <dd>  Intercepted by Python's error handling. Does Python support keywords in CDispatch?
+
+  <dt>
+  <li> User-level Converter mechanism.
+  <dd> Usual one from the inter-system approach.
+   <br>
+     Can kind of do it now using methods for createCOMObject.
+     Just define a method for the particular type.
+   
+  <dt>
+  <li> Static methods for a COM object.
+  <dd> Use OOP to implement the COM definition.
+
+ <dt>
+ <li> DLLs need to be in your path  or in the RDCOMServer directory.
+ <dd> Could copy RDCOM.exe and RDCOMServer.dll to $R_HOME/bin/
+
+  <dt>
+  <li> Environment in which functions are evaluated. 
+  <dd> Or is this just specific to objects() using the environment
+     of the function in which it is invoke?
+
+  <dt>
+  <li> Out of process server.
+  <dd>  Needed for distributed R computing.
+
+   <br> Basics working. Need to ensure it dies.
+   <p>
+     Also, need to connect it to the CLSID. Easily done with a
+     command line argument giving the CLSID to create the factory
+     for.
+
+  <dt>
+  <li> Arrays.
+  <dd> Basics in place.
+  <p> Lists, matrices, S-array objects.
+  <p> Collapse lists to homogeneous types (unlist).
+
+  <dt>
+  <li> [Out] values in methods
+  <dd> Not really S-like.
+
+  <dt>
+  <li> Add-ins for visual basic and Excel.
+  <dd> 
+
+</dl>
+
+<h2>Fixed</h2>
+<dl>
+
+  <dt>
+  <li> Support for different types of S COM definitions.
+  <dd> OOP, S4, ...
+   <br>
+     Users can do this by defining different dispatch methods.
+
+  <dt>
+  <li> Type information.
+  <dd> See SWinTypeLibs
+
+  <dt>
+  <li> Events
+  <dd> IConnectionPoint and similar interfaces.
+       Check what Effective COM has to say on this topic - they recommend against it
+       but because of efficiency, etc. Not a problem really for us!
+       <p>
+       Allow S-COM classes to implement COM interfaces. Particularly,
+       allow them to implement IConnectionPointConainer and become event sources.
+<p>
+       Allow extending classes with S functions/methods.
+       <br>
+       Allow specification of the diffrent IIDs that an object responds to.
+
+
+ <dt>
+ <li> Map the errors in R to COM error codes in C++.
+ <dd> Need to create the relevant enum list in R.
+
+
+ <dt>
+ <li> When registering, check the existence of another
+      class with that CLSID...
+ <dd>
+
+  <dt>
+  <li> Instantiation via persistent objects.
+  <dd> I.e. {de,}serialize S objects in the COM way.
+  <p>
+    Need methods for creating the C++-level COM object
+    for certain types.
+  <p> See where we read the rda key in COMGetClassDef
+   and in registerClassID( rda = ..)
+
+
+ <dt>
+ <li> Instantiation from local information in the registry for the CLSID.
+ <dd> e.g. deserialize an S object, source a file, etc.
+     <p/>
+      Just have a piece of code in GetCOMClassDef that looks at the
+      CLSID and queries the registry to find the definition.
+
+
+  <dt>
+  <li> Examples
+  <dd> Visual Basic one basically works.
+     Get <i>Python</i>, Java (okay), Perl (okay), VB(okay),  C++  (VC++ and MinGW - see R/COMDispatchServer) 
+     examples.
+ <p>
+  For Java, we might use
+  <a href="http://danadler.com/jacob/index.html">JACOB</a>
+  or <a href="http://www.microsoft.com/java">com.ms.com</a>.
+  See the tests/ directory and GNUmakefile.
+
+
+  <dt>
+  <li> Python is acting strangely wiht our servers
+  <dd>
+    Invokes methods rather without the parens () and
+    hence cannot pass arguments.
+    Possibly it is the way were are responding to GetIdsOfNames
+   and the call type.
+
+
+  <dt>
+  <li> Conversion of complex objects.
+  <dd>
+   If get an object, then respond to any queries.
+  Create an object which responds to any function
+  requests and include this as the first argument
+  and offers its attributes or elements as
+  properties.
+<br>
+  See genericObject.S
+
+
+  <dt>
+  <li> Destructor functions
+  <dd>
+     Up to the SCOMIDispatch object to supply a 3rd function
+     (along with invoke and getidsofnames).
+
+
+  <dt>
+  <li> Support properties.
+  <dd> Getting and setting at the Invoke level and also at the S level.
+     <p>
+    For now, write the get and set methods yourself.
+    Otherwise, add a mechanism to SCOMEnvironmentClass
+    converter which  creates .{s,g}etProperty methods
+    using the environment of the functions.
+
+  <p>
+    Done at the S object level implementation.
+ 
+  <dt>
+  <li> GetIDsOfNames to handle cNames greater than 1, i.e. multiple names
+       which will be argument names.
+  <dd>
+    Cacheing at the C++ level - at C-level or with a named S integer object.
+<p>
+    Done with the SCOMIDispatch at the S level.
+
+
+ <dt>
+ <li> Remove the need to get the factory separately.
+ <dd>  See client.exe example in COMIDispatchServer/.
+  Change to GCC 3.2, not 2.95
+
+  <dt>
+  <li> S function to create the COM objects based on the class/type of
+   the definition. (<b>createCOMObject()</b> function)
+  <dd>  Call this from the factory's CreateInstance method.
+     Have it invoke a C method to create the object via a  .Call() and
+     return the pointer via an ExternalPtr.
+ <p>
+  See RCOMFunctionFactory.
+
+
+  <dt>
+  <li>
+Set R_HOME from the registry.
+  <dd>
+ Get this either from the central part of the registry
+ or put the value into each CLSID entry.
+
+</dl>
+</body>
+</html>

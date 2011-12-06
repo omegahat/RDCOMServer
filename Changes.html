@@ -1,0 +1,184 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+<title></title>
+</head>
+
+<body>
+<h1></h1>
+
+<h2>Version 0.6-2</h2>
+<dl>
+ <dt>
+ <li> Repaired the build process so that the .exe and .dll are
+   included at the top-level.
+ <dd>
+</dl>
+
+<h2>Version 0.6-1</h2>
+<dl>
+ <dt>
+ <li> Exported SCOMIDispatch() function from the name space
+  that was erroneously omitted in 0.6-0.
+ <dd>
+</dl>
+
+<h2>Version 0.6-0</h2>
+ <dl>
+  <dt>
+  <li> Pretty extensive testing of the RDCOMClient and RDCOMEvents
+    packages and associated updates to this package.
+  <dd>
+ </dl>
+
+<h2>Version 0.5-4</h2>
+<dl>
+
+ <dt>
+ <li> DCOMVariantRef and sub-classes for handling references to DCOM VARIANT 
+      objects. These are used in event handlers/callbacks as OUT parameters
+      in which results are returned via the arguments.
+ <dd> Facilities for getting and setting their values: getValueOf() and setValueOf().
+
+ <dt>
+ <li> getNativeServerClass() allows one to determine the C++ 
+      class in use to represent the specific R DCOM server.
+ <dd>
+
+ <dt>
+ <li> Functions to access the definition of a server instance.
+ <dd> This allows one to inspect the "functions" used to implement
+      a server instance at run-time. Also one can set new
+      definitions at run-time. This is 
+      convenient when debugging the code in place.
+</dl>
+<h2>Version 0.5-3</h2>
+ <dl>
+  <dt>
+  <li> Building for R-2.1.* with some changes to the structures.
+  <dd>
+ </dl>
+
+<h2>Version 0.5-2</h2>
+ <dl> 
+  <dt>
+  <li> Rebuild binary for R-1.8.* and the new class representation.
+  <dd>
+  <dt>
+  <li> options() are checked for RCOMClassFile 
+       before the environment variable R_COM_CLASS_FILE
+       in getCOMClassDefFileName() when looking for
+       the name of the file that is used to store the
+       COM class definitions exported from R.
+  <dd> Suggested by David James.
+ </dl>
+
+<h2>Version 0.5-1</h2>
+<dl>
+ <dt>
+ <li> Using the appropriate finalizer at the C-level to garbage collect
+  COM servers created by R when the session terminates (normally).
+ <dd>   Thanks to Luke Tierney for explaining the different finalizer
+   registration mechanisms.
+
+ <dt>
+ <li> Fix the {} around the CLSID in more places for the user.
+ <dd>
+</dl>
+
+
+<h2>Version 0.5-0</h2>
+<dl>
+ <dt> Moved the event material from RDCOMServer and RDCOMClient into RDCOMEvents. 
+ <dd>
+</dl>
+
+<h2>Version 0.4-1</h2>
+<dl>
+ <dt>  More structured support for event servers, e.g. classes.
+ <dd>
+</dl>
+
+<h2>Version 0.4-0</h2>
+<dl>
+ <dt> Basic support for event servers
+ <dd>
+</dl>
+
+
+<h2>Version 0.3-4</h2>
+<dl>
+ <dt>
+ <li> Support for strings by reference as arguments for servers.
+ <dd>
+
+ <dt>
+ <li> Include the { } around the UUID given as an argument 
+     to the EXE server.
+ <dd>
+
+
+</dl>
+
+
+<h2>Version 0.3-3</h2>
+<dl>
+ <dt>
+ <li> Collapse COM arrays converted to R lists into vectors
+     if the elements are a) homogeneous and b) integer, numeric, logical or characters.
+ <dd>
+</dl>
+<h2>Version 0.3-1</h2>
+<dl>
+ <dt>
+  <li>  Fix the serialization of the COM objects to avoid the memory fault.
+ <dd>
+</dl>
+
+<h2>Version 0.3-0</h2>
+
+<dl>
+ <dt>
+  <li> Allow the definition to be specified as an RDA file 
+    whose name is found in the CLSID\\uuid\\rda key in the
+    Windows registry. Similarly, support for a profile source
+    file for each class identifier which is run when the 
+    class is resolved by S, which happens each time an object
+    is requested. Currently gets called each time.
+  <dd>
+
+ </dl>
+<h2>Version 0.2-1</h2>
+<dl>
+ <dt>
+  <li>  Fix handling of COMIDispatch argument values. (Testing for NULL 
+    preceeded this.)
+ <dd>
+</dl>
+
+
+<h2>Version 0.2-0</h2>
+
+<dl>
+ <dt>
+ <li> SCOMNamedFunction class and constructor for defining 
+    COM classes in terms of function names.
+ <dd>
+</dl>
+
+<h2>Version 0.1-1</h2>
+
+<dl>
+  <dt>
+  <li>  Merged converter code with RDCOMClient
+  <dd>
+</dl>
+
+
+
+<hr>
+<address><a href="http://www.stat.ucdavis.edu/~duncan">Duncan Temple Lang</a>
+<a href=mailto:duncan@wald.ucdavis.edu>&lt;duncan@wald.ucdavis.edu&gt;</a></address>
+<!-- hhmts start -->
+Last modified: Sun Jan 22 13:32:29 Pacific Standard Time 2006
+<!-- hhmts end -->
+</body> </html>

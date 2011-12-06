@@ -1,0 +1,13 @@
+Package: @PKG_NAME@
+Version: @MAJOR_VERSION@.@MINOR_VERSION@-@PATCH_LEVEL@
+Date:  @DATE@
+Title: R-DCOM object server
+Author:  Duncan Temple Lang <duncan@wald.ucdavis.edu>
+Maintainer: Duncan Temple Lang <duncan@wald.ucdavis.edu>
+Depends: SWinRegistry, Ruuid, methods
+Description: Facilities for exporting S objects and functions as COM objects.
+ This also provides the R evaluator as a COM object, but goes further to allow
+ S programmers export S functions as traditional COM objects with state and methods.
+License: GPL
+URL:  http://www.omegahat.org/RDCOMServer,  http://www.omegahat.org
+      http://www.omegahat.org/bugs

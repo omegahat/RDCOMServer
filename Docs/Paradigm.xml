@@ -1,0 +1,351 @@
+<article
+         xmlns:r="http://www.r-project.org"
+         xmlns:c="http://www.c.org"
+	 xmlns:s="http://cm.bell-labs.com/stat/S4"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+         xmlns:com="http://www.microsoft.com"
+	 xmlns:omegahat="http://www.omegahat.org"
+         xmlns:vb="http://www.visualbasic.com"
+         xmlns:bioc="http://www.bioconductor.org"
+         xmlns:java="http://www.java.com"
+>
+
+<articleinfo>
+ <title>S and COM via Objects</title>
+ <authorgroup>
+  <author>
+    <firstname>Duncan</firstname>
+    <surname>Temple Lang</surname>
+    <affiliation><ulink url="http://cm.bell-labs.com/stat/duncan">Statistic and Data Mining Resarch, Bell
+    Labs</ulink></affiliation>
+  </author>
+ </authorgroup>
+ <date/>
+</articleinfo>
+
+<abstract>
+
+This document describes the philosophy that motivates the use the
+RDCOM packages and contrasts that with other approaches.
+Specifically, it describes the need for being able to expose S
+functionality and values as regular COM objects rather than simply
+expose the R command interpreter.
+
+</abstract>
+
+<section>
+ <title>The traditional approach</title>
+
+Inter-system interfaces are very attractive.  They allow programmers
+in one language or system to readily use code in another language or
+system with very little overhead.  They do not have to translate the
+original code into their own language. Instead, they only have to
+install the inter-system mechanism and invoke the relevant code.
+There are a lot of these inter-system interfaces available now, and
+this is also true for S, and specifically R.  We can call Java, Perl,
+Python, Octave, XLisp, Objective-C, (D)COM from S
+and, importantly, vice-versa.
+
+<para/>
+
+When people think of making S available to other programming
+languages, they typically suggest that one should be able to send S
+commands from these other languages.  S will evaluate them and one can
+generate plots or write to files, and in some cases even get back the
+results from evaluating the command.  As an example, one might write
+some Visual Basic code to generate some random numbers in R.
+<vb:code>
+ Dim x As Object
+ R = CreateObject("R.Evaluator")
+ x = R.evaluate("rnorm(10)")
+</vb:code>
+So far this is quite easy.
+The array is sent back to the Visual Basic function
+from R and the values are immediately available.
+
+<para/>
+
+There are four ways in which this style of computing
+can be limiting.
+<orderedlist>
+<listitem>
+The programmer must know the S language and its syntax to be able to
+construct commands.  This defeats the purpose of programming in this
+other language.  Instead of having a single programming language to
+deal with and debug, the programmer must switch between two and deal
+explicitly with both. While it is beneficial to have the additional
+functionality, the interface places the burden on each user of the
+interface, not the interface itself.  Instead, we want the programmer
+to be able to think of the additional functionality in the usual terms
+of her existing and familiar programming language. So in Visual Basic,
+for example, we want S functions to appear as if they are VB routines.
+</listitem>
+
+<listitem>
+In addition to having to know the S language, the programmer in the
+other system must also construct these commands as part of their code.
+They must use data that is local to their program to parameterize the
+S commands to get the desired behavior and they must do this by
+pasting together elemens of the command as strings.  For example,
+suppose in our example above that we wanted to generate a sample of
+size <emphasis>n</emphasis> rather than the fixed and constant value
+10.  <emphasis>n</emphasis> is a variable in the local program, say in
+Java. In this case, we have to construct the command
+as a string something like
+<java:code>
+  cmd = "rnorm(" + n + ")"
+</java:code>
+If we have three arguments to the function (e.g. the mean and standard
+deviation), we would do something
+<java:code>
+  cmd = "rnorm(" + n + ", " + mean + ", " + sd + )"
+</java:code>
+This starts to get more complex to type and match the commas,
+etc. Essentially, we are writing one language in another and
+this demanding but tedious.
+It is conceptually quite simple, as is a lot of programming,
+but the opportunities to make a mistake abound. 
+Unbalanced parentheses, missing commas, etc.
+are common. If a local function deals with an arbitrary number
+of arguments and puts these into the command, it must explicitly
+loop, check whether we put a comma or are we at the final argument,
+etc.
+</listitem>
+
+<listitem>
+A far more important and technical problem arises in how we represent
+data from the local system in the command as a string.  For example,
+suppose we have a <java:class>javax.swing.Window</java:class> in Java
+and need to pass it to R.  Clearly, there is no fool-proof way to put
+this into the command represented as a string.  One can ask what good
+it would do R to have access to this.  Firstly, if R can call Java
+methods, then the R code might invoke a method on the Window object as
+part of its actions.  More straightforwardly, R might simply pass the
+Window object to another Java method.  If we cannot pass the Window
+object to the R function, we would have to have written the original
+Java code to put the object into a global variable and have the other
+Java method look there.  So we might use global variables, rewrite the
+original code, or alternatively implement some scheme for passing an
+identifier to R which can be resolved back in Java by the relevant
+Java methods.  All of this greatly detracts from the use of the
+inter-system interfaces.  It limits the utility of the interface to
+computations that involve data that can be represented as a string, or
+it involves rewriting the existing code or using some ad hoc, homespun
+techniques to manage the communication.
+
+<para/>
+To be useful, we must be able to pass objects between the systems. And
+for those objects that have no corresponding meaning in the remote
+system, we must be able to pass a reference to the original object.
+
+</listitem>
+
+<listitem>
+One of the major drawbacks of the interface that only allows commands
+to be evaluated is how we return complex, i.e. non-primitive, values.
+For example, suppose we use R to fit a linear model via the
+<s:func>lm</s:func> function.  Again, we have an issue of how we can
+pass the data to R.
+We can represent it explicitly in the command something like
+<vb:code>
+ R.evaluate("lm(y ~ ., data = data.frame(y = c(1.2, 3.2,...), x1 =  c(...), x2 = c(...)))")
+</vb:code>
+Alternatively, we could create the dataset in R ahead of time
+using several commands
+<vb:code>
+<![CDATA[
+ R.evaluate("myData <<- data.frame()")
+ R.evaluate("myData$y <<- c(1.2, 3.2,...)")
+ R.evaluate("myData$x1 <<-  c(...)")
+]]>
+</vb:code>
+and so on. Which is more convenient depends on the context.
+But note that we now have two scopes or evaluation contexts to worry
+about: R's and the local one. The data lives in local variables
+and we are explicitly creating R variables in the R session.
+We have to be very careful to choose names that don't overwrite
+existing data used in other routines that manage data in this
+same way. Again, we are using global variables, albeit in
+a different system, and have sacrificied modularity
+and maintainability in our code.
+
+<para/>
+
+With this issue aside, how do we return the result of the linear model
+fit. Clearly there is no obvious way to bring it back with all its
+meaning to the original system.
+In some of the inter-system interfaces,
+we know the two languages
+involved, e.g. R and Perl.
+In that case, we can use a default approach which is
+to copy the elements of an R list, e.g. the lm object,
+to a Perl object with the same elements. In this way,
+we do a <emphasis>deep recursive copy</emphasis>.
+This will get the data contents across but not necessarily
+the semantics of the object.
+
+<para/>
+In the case of COM, we don't have any information about
+the client to which we are returning the value.
+In this case, we must keep the data on the server in which it 
+was created and present it to the client in a suitable form.
+In other words, we must create a COM object that provides the
+client with access to the values.
+To do this in S, we obviously must have a mechanism to
+create a regulr COM object which can be used
+to access the elements of the object and even call methods on it.
+Without this facility, the client must be careful to ensure
+that non-basic values are returned.
+It must do this by assinging the results to R's global environment/workspace
+and always returning a primitive value.
+In the case  of the <s:func>lm</s:func>
+above
+
+<para/>
+In some cases, we explicitly do not want to have a copy of it returned
+to the original system. Instead, we must have a reference to the
+object so that it can be updated in subsequent calls and shared across
+these calls.
+
+<para/>
+
+How do we do this? There must be a mechanism for creating a reference
+to an S object and returning that reference as an value in the non-S
+system.  If we do this, the programmer in, say, Python can then ask
+for the different elements in the S object, or invoke methods or
+functions on that object.  This model will allow us to perform all
+types of computations and in a vary natural way. Instead of sending S
+language commands to R which refer to variables in its global
+namespace created as a result of previous expression, we can invoke
+functions/methods on objects as we do on local objects in the non-S
+language. In this way, the programmer doesn't have to know the S
+syntax but can use its functionality directly as if it were
+local. And importantly, the computations are not limited to
+simple data types such as primitive values and arrays of primitive values.
+</listitem>
+
+<para/>
+
+Another significant problem with this approach is that one generally
+wants to use events in distributed applications.  Rather than
+periodically asking a server for information to see if it has changed,
+we want the server to notify us when something does happen. To do
+this, we need to be able to create an event handler in our language
+and register it with the client.  For example, we want to be able to
+use an S function to implement a Java interface so that we can use it
+as a <java:class>java.awt.ActionListener</java:class>.  Similarly, if
+we want to listn for events from Excel, we need to turn our S
+function(s) into a COM <com:class>IConnectionPoint</com:class> object.
+Again, we need to be able to deal with objects, not the S language and
+its syntax.
+
+
+</orderedlist>
+
+</section>
+<section>
+ <title>S-Plus's COM interface</title> S-Plus provides a mechanism for
+exposing S functions as COM objects.  The model (see <cite id="VR"/>)
+for the client is that the caller populates the collection of relevant
+arguments by assigning values to argument names (and specifying the
+types) and then calls the <com:method>Run</com:method>.  This returns
+a status value indicating whether the call was successful or not.  If
+it was, the result is available in the property
+<com:property>ReturnValue</com:property>.
+This is cumbersome way of programming.
+For example, if we want to call the <s:func>rnorm</s:func>
+with the sample size and the standard deviation,
+we do something like the following (untested) in Perl:
+<perl:code>
+<![CDATA[
+$f = Win32::OLE->new("S.rnorm");
+$f->n = 100;
+$f->sd = 20;
+if($f->run()) {
+  @x = @{$f->ReturnValue};
+}
+]]>
+</perl:code>
+<para/>
+We always have to use the argument names.
+And getting the return value is separate from
+the act of invoking the function call.
+Perhaps one of the most problematic aspects
+of this model is that the COM object
+representing the function has state.
+We store the arguments in the object
+and call it separately. 
+In most languages, function calls are atomic
+actions, but this is not the case here.
+This means that potentially two clients
+could be accessing the object at the same time
+and setting arguments and interfering with each other.
+We don't even need two clients, just two calls, for this to happen.
+Suppose that a client was to use a random value from
+the Uniform distribution and the maximum value is
+to be chosen from another Uniform distribution.
+Imagine that we define a Python function for this:
+<python:code>
+def getUniform(n, min = 0, max = 1) 
+ "Assume that runif is a global object that has been initialized as CreateObject('runif')"
+ runif.n = n;
+ runif.max = getUniform(1, max = 20)
+ runif.run();
+ x = runif.ReturnValue;
+ return(x);
+}
+</python:code>
+If <python:var>runif</python:var> was a global variable
+that was a reference to the S function, we would get ourselves
+into trouble. We would set the desired sample size in the S object.
+Then we call the Python function <python:func>getUniform</python:func>
+recursively to generate the maximum value for this call.
+That second call, of course, resets the sample size
+to 1 in its call. As a result, the original call to 
+<python:func>getUniform</python:func> will generate 
+only a single random value, not n values.
+Obviously, the approach to get around this is 
+to have each call to <python:func>getUniform</python:func>
+create its own instance of the <s:func>runif</s:func>
+COM object. But we had better remember to do this or
+we will see strange results.
+And of course, if we could call the
+<s:func>runif</s:func>'s <com:method>Run</com:method>
+with arguments in the call, this would avoid the 
+"state" problem altogether. Of course, there would be other issues
+in compiled languages, but that is a different issue.
+</section>
+
+
+<section>
+ <title>Our approach</title>
+
+As we have hinted earlier in this document, we recommend and have
+implemented a different approach to the ones described above.  And
+ours is sufficiently flexible that one could implement both approaches
+above using our mechanism and some simple S code.  Rather than
+exposing the S interpreter and having clients send S commands or
+exposing a function object that provides an invocation mechansism that
+involves setting state, we offer a mechanism that allows users to
+expose regular COM objects (i.e. with methods and properties) that are
+implemented in the S language.  It handles arbitrary values both in
+the arguments and return values and is customizable in how it
+dispatches method invocations locally at the S-level.
+Additionally, providing S-level COM objects allows us
+to easily register for COM events, e.g. for Active X controls.
+
+<para/>
+
+The <s:package>RDCOMServer</s:package> package provides this mechanism
+and can be coupled with the <s:package>RDCOMClient</s:package>,
+<s:package>SWinRegistry</s:package> and
+<s:package>SWinTypeLibs</s:package> to give a comprehensive S-language
+interface to COM that is bidirectional and overcomes many of the
+limitations with the other approaches.  It provides a rich, structured
+programming approach to distributed computing on Windows.  A very
+similar CORBA interface is also possible which will hide the
+differences between the Unix and Windows details.
+
+</section>
+</article>

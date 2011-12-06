@@ -1,0 +1,61 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+<title></title>
+</head>
+
+<body>
+<h1>RDCOMServer examples</h1>
+
+These are examples of defining COM classes in S and using
+them in other languages.
+
+<dl>
+  <dt>
+  <li> <a href="Sobject.html">A Normal distribution COM class</a> that provides
+       methods for sampling; computing quantiles, percentiles
+       and density values; and shifting and scaling the distribution.
+  <dd>
+      <ul>
+	<li>Server <a href="Sobject.S">S COM class</a>,
+	<li>Client <a href="Sobject.vb">Visual Basic client</a>.
+      </ul>  
+  <dt>
+  <li> <a href="Sengine.html">Sengine</a>
+  <dd> A COM server providing access to the R interpreter/evaluator.
+      <ul>
+	<li>Server <a href="Sengine.S">S COM class</a>,
+	<li>Client <a href="Sengine.pl">Perl client</a>, <a href="Sengine.py">Python client</a>.
+      </ul>
+
+  <dt>
+  <li> <a href="ttest.html">t-test Server</a>
+  <dd>
+      Expose the t-test function as a server that returns a complex
+      object, i.e. one with numerous properties, etc.
+       This tests the generic COM object handler.
+      <ul>
+	<li>Server <a href="ttest.S">S COM class</a>,
+	<li>Client <a href="ttest.pl">Perl client</a>.
+      </ul>      
+
+  <dt>
+  <li> <a href="random.html">random number generator functions</a>
+  <dd> An example of providing access to  S functions by name
+      (rather thatn the function object itself in the COM class
+      definition).
+       This provides facilities for generating samples from
+        Normal, Poisson and Binomial distributions
+      in a different way than <a href="Sobject.html">the Normal
+      example</a>.
+      
+       
+</dl>
+
+
+<hr>
+<address><a href="http://www.stat.ucdavis.edu/~duncan">Duncan Temple Lang</a>
+<a href=mailto:duncan@wald.ucdavis.edu>&lt;duncan@wald.ucdavis.edu&gt;</a></address>
+<!-- hhmts start -->
+Last modified: Tue Apr 29 22:41:19 EDT 2003
+<!-- hhmts end -->
+</body> </html>

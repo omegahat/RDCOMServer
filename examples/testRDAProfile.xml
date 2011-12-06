@@ -1,0 +1,230 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                         "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
+
+
+<article xmlns:r="http://www.r-project.org"
+         xmlns:s="http://cm.bell-labs.com/stat/S4"
+         xmlns:registry="http://www.microsoft.com/registry"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+>
+
+ <title>A serialized COM server</title>
+
+<section>
+This example illustrates how we can use serialized R objects to
+construct R COM servers and also how we can execute an R script each
+time an instance of an R COM server is created.  Rather than defining
+a COM class definition such as a generator function to create methods,
+or a simple list of functions, it is often convenient to have a
+particular fixed S object that is used each time an instance of the
+COM server is needed.  For example, suppose we have a particular
+dataset and we want to allow clients to have access to it as a COM
+object.  It is most direct to simply serialize that dataset in an R
+data file (.rda) and instruct R to create the COM instances by
+deserializing that object and constructing a COM object directly from
+it.  When defining the COM object, we need only serialize the S object
+and ensure that there is a method for the
+<s:func>createCOMObject</s:func>.
+Alternative approaches involve arranging to create unique instances
+of closures that have access to a copy of the data and, while
+possible,  this can be more awkward and indirect.
+
+<para/> The author of the COM server saves an R object to a file so
+that it is available to future R sessions.  Then, we define a COM
+server definition that knows where to find this file containing the
+serialized data and uses it to construct the object.  Let's start by
+creating a simple S object that we want to provide as a COM
+server. We'll create a simple matrix with the numbers 1 through 35
+and with dimensions 5 by 7.
+Then we save it to the file <file>matrix.rda</file>
+(in the current directory).
+
+<s:code>
+m = matrix(1:35, 5, 7)
+fn = paste(getwd(), "matrix.rda", sep=.Platform$file.sep)
+save(m, file = fn)
+</s:code>
+
+Note that we can save any S object(s) at this point in the rda
+file.
+
+<para/>
+
+Now we can proceed to register this fixed S object as a COM server.
+We provide a UUID for the class, either by selecting a specific one or
+generating it anew.  And then we directly add the entry to the Windows
+registry so that clients can find and instantiate the server.
+
+<s:code>
+library(RDCOMServer)
+clsid = getuuid("E9A94B2B-47C6-4CBA-D9A8-737577914171")	
+registerClassID("Test.LocalMatrix", clsid, rda = fn, 
+                profile = gsub("/", "\\\\", system.file("tests", "profile.S", package = "RDCOMServer")),
+                testKey = "my own value")
+</s:code>
+
+What we have done here is put an entry into the registry under
+<registry:key>HKEY_CLASSES_ROOT</registry:key> for the program name
+<literal>Test.LocalMatrix</literal>.  Under this, we have added the
+value of the UUID so that the COM mechanism can then jump in the
+registry to the actual definition.  This is stored in
+<registry:key>HKEY_CLASSES_ROOT\{E9A94B2B-47C6-4CBA-D9A8-737577914171}</registry:key>.
+This key contains several entries, specifically 
+<registry:key>rda</registry:key>, 
+<registry:key>profile</registry:key>, 
+and
+<registry:key>testKey</registry:key>.
+
+<para/>
+
+The <registry:key>rda</registry:key> gives the name of the file into
+which we serialized the S value.  This will be deserialized and
+converted to a COM object via a call to
+<s:func>createCOMObject</s:func>.
+The <registry:key>profile</registry:key>
+value here gives the name of a file containing S source code.
+This is <s:func>source</s:func>'ed each time an instance of this
+server is needed. This can be used to do initialization of the
+system such as loading packages, etc. that provid functions and
+methods that will be used by the resulting COM server. 
+
+
+<para/>
+
+Note that we don't need to provide any additional information in this
+particular case. The <s:func>GetCOMClassDef</s:func> function will be
+called with the UUID of this class and it will look for these keys in
+the associated registry key.  On finding them, it will source the file
+identified by <registry:key>profile</registry:key> and deserialize the
+<registry:key>rda</registry:key> file.  Then it calls
+<s:func>createCOMObject</s:func> on the resulting object obtained from
+the deserialization.  In our case, we have a built-in method for
+handling matrices.  If we needed to provide a method to handle the
+particular type, we could add it to the
+<registry:key>rda</registry:key> file, or to the
+code in the <registry:key>profile</registry:key> file.
+
+
+
+<para/> These two keys provide sufficient flexibility to create a COM
+server from a fixed object.  However, it is sometimes useful for the
+resulting COM server to be able to be parameterized by additional
+values.  We can do this by putting additional entries into the UUID's
+registry key which the <s:func>createCOMObject</s:func> method can
+query to customize the serve.  As a slightly unrealistic example,
+suppose we wanted to provide access to only a fixed set of columns in
+a very large data frame. Rather than having a copy of the subset on
+disk, we might want to add an additional property to the COM server
+which restricted the columns to the specified subset.  While we can
+write a functional server to do this, we can also specify the
+serialized file and a registry entry, say
+<registry:key>columns</registry:key>, that gives a comma-separated
+list of the column names to export.
+
+
+<para/>
+
+Given the registration above, a client can use this in much the same
+way it would use a regular COM object from S.  For examle, in Python,
+we can create an instance of the server and ask for its dimensions.
+
+<python:code>
+from win32com.client import Dispatch
+o = Dispatch("Test.LocalMatrix")
+d = o.dim()
+print d
+</python:code>
+
+Now we create a second instance to see if the profile is
+run a second time.
+<python:code>
+o = Dispatch("Test.LocalMatrix")
+d = o.dim()
+print d
+</python:code>
+
+</section>
+
+<section>
+<title>Data Frames</title>
+
+In this example, we illustrate a slightly different variant of
+the same idea. Again we use a fixed S object; in this case
+the <s:data>mtcars</s:data> data frame.
+There is a method for <s:func>createCOMObject</s:func>
+for objects of this class (<s:class>data.frame</s:class>)
+so we can convert it to an COM object quite easily.
+The only thing that remains is to specify 
+some code to ensure that the data is loaded into R
+and that we can tell R to use this as the data for the COM object.
+Loading the data into R we can do with the 
+<registry:key>profile</registry:key> key.
+The code we want is the single expression
+<s:code omit="true">
+ data(mtcars)
+</s:code>
+Rather than going to the trouble of putting this in a file
+and registering the name of the file as the value for 
+the <registry:key>profile</registry:key> key,
+it is more convenient to specify this command directl as the
+value of the key. Then, we arrange for the 
+<s:func>COMGetClassDef</s:func> to interpret
+this value as a command if there is no file of that name.
+So now we save ourselves some additional hassle
+by giving the command inline.
+
+<para/>
+
+If we were to copy the mechanism for the matrix in the example above,
+we would also have to specify the location of the file containing the
+serialized <s:data>mtcars</s:data> data frame. Again, it is more
+convenient to tell <s:func>GetCOMClassDef</s:func> to fetch the
+variable by name and not have to find the object indirectly via file.
+To do this, we specify the name of the S variable to use to get the
+desired object. To do this, we use the
+<registry:key>Svariable</registry:key> key and assign it a value of
+<literal>"mtcars"</literal>.  We don't provide a value for the
+<registry:key>rda</registry:key> key and
+<s:func>GetCOMClassDef</s:func> realizes what to do.
+
+<para/>
+So now we know how to register such a server quite simply.
+The following code is very similar to that for the matrix
+example above, but differs only in that
+we provide an S command for the value of
+<s:arg>profile</s:arg>
+and the name 
+<literal>"mtcars"</literal> for 
+<registry:key>Svariable</registry:key>.
+
+<s:code group="dataFrame.S">
+library(RDCOMServer)
+clsid = getuuid("52d4f6bc-dd1c-45b3-0287-e469ede627f7")
+registerClassID("S.Mtcars", clsid, 
+                profile = "data(mtcars)",
+                Svariable="mtcars")
+</s:code>
+  
+
+Again, a simple Perl client illustrates the use of this server.  Note
+that, as we would expect, the client doesn't need to know how the
+server is speicfied and created. It just gets a handle to the object
+and can start invoking methods.
+
+<perl:code file="dataFrame.pl">
+<![CDATA[
+use Win32::OLE;
+
+$mtcars = Win32::OLE->new("S.Mtcars");
+
+@dim= @{$mtcars->dim()};
+print "Cars: ", $mtcars, "\n";
+
+print $#dim, "\n";
+print $dim[0], "x ", $dim[1], "\n";
+]]>
+</perl:code>
+</section>
+</article>

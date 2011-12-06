@@ -1,0 +1,310 @@
+\documentclass[11pt]{article}
+
+\input{WebMacros}
+\input{SMacros}
+
+\begin{document}
+
+\section{Publishing a COM Class}
+At its simplest, a COM object in R is a named collection of functions.
+Clients identify the objects methods using the names in the S list. In
+R, we can use lexical scoping and closures to allow some or all of
+these functions to share mutable state, i.e. variables that change
+across calls and are accessible to the different functions.  In this
+case, we typically create the list of functions for each new object in
+order to get a different environment that is independent of other
+objects. But again, we are dealing simply with a list of functions.
+
+In addition to the functions or methods, a COM object can also have
+properties that it makes accessible to clients.  At its simplest, the
+properties need only be named.  And if we are using lexical scoping,
+they are naturally stored in the environment shared by the functions.
+
+There are a variety of other ways to define an S-COM class and arrange
+instances of such definitions. However, the \textit{simplest} approach
+is to use closures and specify properties by name.  This involves
+defining a constructor function associated with the S-COM class.  This
+is used to create the list of functions that act as methods.  We also
+specify the names of the properties whose values can be found in the
+environment of these functions.  Next we specify a name for the S-COM
+class. And if we are being well-behaved, we specify a collection of
+strings providing a short description for each of the methods.
+
+Let's take a look at a simple example.  We will define a COM class to
+describe a Normal distribution. It has two properties: its mean and
+standard deviation. And it provides methods for generating a sample of
+$n$ values, and computing quantiles, percentiles and density values.
+These functions share the mean and standard deviation values across
+calls. We can define a generator function (\SFunction{g}) that
+provides these and the properties \Svariable{mu} and
+\Svariable{sigma}.
+\begin{verbatim}
+g <- function(mu = 0, sigma = 1) 
+{
+  sample <- function(n) {
+     rnorm(as.integer(n), mu, sigma)
+  }
+
+  percentile <- function(q, lower = TRUE) {
+    pnorm(as.numeric(q), mu, sigma, lower.tail = as.logical(lower))
+  }
+
+  quantile <- function(p) {
+    qnorm(as.numeric(p), mu, sigma)
+  }
+
+  density <- function(x) {
+     dnorm(as.numeric(x), mu, sigma)
+  }
+
+  list(sample = sample, 
+       percentile = percentile,
+       quantile = quantile, 
+       density = density,
+       .properties = c("mu", "sigma"),
+       .help = c(sample = "generate a sample of values",
+                percentile = "CDF values from this distribution",
+                quantile = "quantile values from this distribution",
+                density = "values of the density function for this distribution"
+                ))
+}
+\end{verbatim}
+Now, whenever we need a new instance of this Normal distribution, we
+can invoke this generator function.  Note that we return the functions
+in a named list.  These functions are simple wrappers to the regular
+normal distribution functions in S, and they perform appropriate
+simplifications, accessing the parameters and error checking.  
+These just provide a context for these existing functions.
+
+In addition to the functions, we also specify the names of the
+properties and the help in this list to round out our definition.
+
+At this point, we have almost enough information to use this as part
+of an S-COM class.  All that remains is to make this visible to client
+applications.  We need to give the class a unique identifier (a UUID)
+and also a regular name and then we need to put it somewhere so that
+when it is needed COM and R can create a suitable object.
+The steps involve in ``publishing'' this definition
+are
+\begin{enumerate}
+\item create an appropriate type of SCOMClass obect
+  to represent the definition, e.g. \SClass{SCOMIDispatch};
+\item store the definition as an S object so that it can be  used
+  when R is started;
+\item add an entry to the Windows registry to expose
+ the class identifier (UUID) and associate it with a DLL or EXE.
+\end{enumerate}
+
+These steps are achieved in S with the following commands.  We create
+the definition combining the generator function and the name
+(\texttt{S.Normal}) using \SFunction{SCOMIDispatch}.  This creates an
+object of class \SFunction{SCOMIDispatch} that describes the class
+definition.  It also generates the UUID for the class identifier.  And
+next, we use \SFunction{registerCOMClass} to store the definition in
+an S list that can be found when R starts up, and also add the
+necessary information to the Windows registry.
+\begin{verbatim}
+def <- SCOMIDispatch(g, "S.Normal")
+registerCOMClass(def)
+\end{verbatim}
+
+This uses the \SPackage{SWinRegistry} package\cite{SWinRegistry} to
+access the Windows registry from R.  The UUIDs are generated using the
+\SPackage{Ruuid} package\cite{Ruuid}.
+
+
+\section{The COM Mechanism}
+When a client asks for an instance of an S-COM object e.g. in Perl
+\Escape{Win32::OLE->new()}, COM queries the class identifier in the
+Windows registry and loads the associated RDCOMServer.dll (or EXE).
+Then it asks the DLL for a factory for the specified class ID.  In our
+case, we create an instance of the basic \CClass{RCOMFactory} by first
+resolving the class ID within the list of the registered S-COM
+classes.  Then the COM mechanism within the client asks the factory to
+create an instance of the given class (using the
+\CMethod{CreateInstance} method).  This ends up with a call to
+\SFunction{createCOMObject} with the S-COM class definition as the
+only argument.  There are different methods for this generic function,
+but they are all expected to do the same general thing: create a C++
+object that represents the S-COM object and knows how to lookup names
+and invoke methods and access properties.
+
+There are a variety of ways to handle these definitions and create
+associated C++ objects. Basically, there are several degrees of
+freedom.  We can put the computations in C++ or in S or as some
+hybrid.  For better understanding and easier experimentation, we
+implement the methods for looking up names, invoking methods and
+accessing properties in S functions.  Good design of C++ classes
+allows us to implement this flexibly and easily move between different
+implementations and the different languages.  And as efficiency
+becomes more important, we can move towards C++ implementations.
+
+In the case of a \SClass{SCOMIDispatch}, the
+\SFunction{createCOMObject} performs the following steps.
+\begin{itemize}
+\item call the generator function in the class definition
+ to create the instance of the S object. This creates the
+ relevant list of functions which are used as the methods.
+ The environment of the first function in the list will be used to 
+ find properties. 
+
+\item   The list of methods, etc. returned by the generator
+  is passed as an argument in a call to \SFunction{COMSIDispatchObject}.
+  This is another generator function that provides two methods,
+  one for processing COM invocations and property access,
+  and a second for mapping names to integer ids.
+  These methods correspond to the IDispatch methods
+  \CMethod{Invoke} and \CMethod{GetIDsOfNames}.
+  
+\item These two functions returned from the call to \SFunction{COMSIDispatchObject}
+  are passed to a C++ level constructor for the \CClass{RCOMSObject} class.
+  When COM requests are processed by this object, the methods in this object pass
+  their arguments to the corresponding functions. These are responsible for 
+
+
+\end{itemize}
+
+\section{Different Stategies}
+If one wants to explore different ways to handle the invocations, one
+can define a new method for \SFunction{createCOMObject}.  For example,
+suppose we want to export top-level functions simply by name. Rather
+than fetching the functions when the object is defined, we want client
+calls to find the \textit{current} definition of the function.  In
+this context, we have no need for lexical scoping to maintain state
+across calls.  To define the COM class, all we need is the names of
+the functions and the names of the properties corresponding to
+top-level variables.  So we define a new S class to represent this
+type of COM definition:
+\begin{verbatim}
+setClass("SCOMNamedFunctionClass",
+	  representation("SCOMClass",
+	                 functions="character",
+                         properties="character"))
+\end{verbatim}
+
+Next, we create a constructor function for this class.
+\begin{verbatim}
+SCOMNamedFunctionClass <-
+function(functions, properties = character(0), name, help = "", def = new("SCOMNamedFunctionClass"))
+{
+  def <- .initSCOMClass(def, name = name, help = help) 
+  def@functions = functions
+  def@properties = properties
+
+  def
+}
+\end{verbatim}
+
+So if a programmer wants to, for example, expose the functions
+\SFunction{rnorm}, \SFunction{hist} and \SFunction{boxplot},
+she would create a definition for the COM class as 
+\begin{verbatim}
+ def <- SCOMNamedFunctionClass(c("rnorm", "hist", "boxplot"), name = "UnivariateNormalSampler") 
+\end{verbatim}
+and simply register it
+\begin{verbatim}
+ registerCOMClass(def)
+\end{verbatim}
+
+At this point, the COM definition is accessible to clients.  They can
+create an instance of the object, but we still have to define how we
+will create a C++-level object to handle this object and its methods.
+We do this by providing appropriate methods for the invoke and
+getIDsOfNames methods at the S level.  We define a method for
+\SFunction{createCOMObject} for the \SClass{SCOMNamedFunctionClass}
+and have it create a suitable C++ object that will dispatch the COM
+methods correctly. To do this, we can mimic the
+\SFunction{COMSIDispatchObject} function in the \SPackage{RDCOMServer}
+package. We pass it the names of the functions and properties to
+expose and have it manage the mapping of names to integers and back,
+and looking up functions and properties.  \SFunction{createCOMObject}
+can the pass these two S functions to the C routine
+\Croutine{R_COMSObject} to create the C++-level class.  While this all
+seems rather indirect, it is actually quite simple in practice.  If we
+were using the OOP package, it would amount only to extending the
+invoke method in a trivial way. It is made more complicated because we
+are talking about closures, etc. in ad hoc ways.
+
+\begin{verbatim}
+COMSIDispatchObject <-
+#
+# Generator for handling IDispatch at the S level.
+# 
+function(funs, properties)
+{
+  .ids <- computeCOMNames(funs)
+
+  invoke <-
+   function(id, method, args, namedArgs) {
+     if(length(namedArgs)) {
+       names(args)[1:length(namedArgs)] <- names(.ids)[namedArgs]
+     }
+
+     if(is.na(match(names(.ids)[id], names(funs))) &  any(method[-1])) {
+       el <- names(.ids)[id]
+       if(!is.na(match(".properties", funs))) {
+          if(is.na(match(el, funs[[".properties"]]))) 
+	     stop(el, " is not a property")
+       } else {
+          if(!exists(el, envir = environment(funs[[1]])))
+	     stop(el, " is not an implicit property")
+       }
+         
+       if(method[2]) {
+          get(el, envir = environment(funs[[1]]))
+       } else {
+          assign(el, args[[1]], envir = environment(funs[[1]]))
+       }
+     } else {
+       f <- funs[[id]]
+       eval(as.call(c(f, args)))
+     }
+   }
+
+  getIDsOfNames <- 
+    function(ids) {
+      i <- match(ids, names(.ids))       
+      if(any(is.na(i))) {
+        stop(paste("Names not found: ", paste(ids[is.na(i)], collapse=", "), " in ", paste(names(.ids), collapse=", " )))
+      }
+
+      .ids[i]
+    }
+
+  list(invoke, getIDsOfNames)	
+}
+\end{verbatim}
+
+Logging commands
+
+Simple function list.
+
+
+Destructors!
+
+
+
+
+
+
+
+
+\section{}
+The choice of the \SClass{SCOMIDispatch} to represent the class
+definition will be typical. However, there are other choices and the
+choice determines how methods and properties are processed.
+Essentially, the class used to represent the definition controls how
+the COM instances are generated from this class.  When a client asks
+for a new S COM object, the S mechanism finds the definition and then
+calls \SFunction{createCOMObject}.  This is a generic function and we
+have methods for different \SClass{SCOMClass} objects.  What these
+methods for \SFunction{createCOMObject} do is to create the
+appropriate C++-level object that handles the invocation of methods
+and property access.  And these different classes process the S-COM
+class definition differently.  In the case of the
+\SClass{SCOMIDispatch} class, the \SFunction{createCOMObject} calls
+the generator function to create the instance of the S object.  Then
+it calls another generator function which is used to manage the lookup
+of names and dispatch of methods and finally 
+
+\end{document}

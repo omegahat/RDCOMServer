@@ -1,0 +1,43 @@
+useDynLib(RDCOMServer)
+
+#exportPattern(".*")
+
+export(registerCOMClass,  unregisterCOMClass,
+       registerClassID, unregisterClassID,
+       isRegistered)
+
+export(getCOMClassDefFileName, loadCOMClassDefs, saveCOMClassDefs,
+       lookupCLSIDByName)
+
+export(SCOMFunctionClass, SCOMIDispatch)
+
+export(genericCOMHandler)
+
+ # Exported from RDCOMClient. Leave them there for the moment
+ # unless we make a separate run-time package that is loaded by all
+ # of the user-level RDCOM packages.
+# export(COMError, COMStop)
+
+export(createCOMObject)
+
+export(.initSCOMClass)
+
+export(getServerDetails, setServerDetails)
+
+export(GetCOMClassDef)
+
+exportClasses("SCOMClass", 
+              "COMInterfaceServerInfo",
+              "SCOMEnvironmentClass", 
+              "SCOMInterfaceEnvironmentClass",
+              "SCOMIDispatch", 
+              "SCOMFunctionClass",
+              "SCOMInterfaceFunctionClass", 
+              "RDCOMServer")
+
+exportMethods(QueryInterface, createCOMObject)
+
+
+# For VARIANTs
+# exportClasses("DCOMVARIANTRef")
+#exportMethods("getValueOf", "setValueOf", "$")

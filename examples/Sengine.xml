@@ -1,0 +1,329 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                         "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
+
+
+<article xmlns:r="http://www.r-project.org"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+         xmlns:s="http://cm.bell-labs.com/stat/S4"
+>
+
+  <title>A COM interface to the S evaluator</title>
+
+
+<sect1>
+ <title>Exposing the R evaluator as a COM interface</title>
+
+While we generally want to avoid clients in different languages having
+to know the S language, some operations are most easily expressed in
+S. For example, we may want to initialize the interpreter or establish
+some initial state.  So it can be convenient to provide methods for
+manipulating the interpreter and evaluating S commands.  We provide
+methods for
+<itemizedlist>
+<listitem> loading and unloading a package (i.e. the
+<r:func>library</r:func> and <r:func>detach</r:func> functions),
+</listitem>
+<listitem>
+accessing variables (<r:func>get</r:func> and
+<r:func>assign</r:func>), 
+</listitem>
+<listitem>
+getting the search path and the contents of elements in the search
+path, 
+</listitem>
+<listitem> calling functions and evaluating
+expressions (in the form of strings)
+</listitem>
+</itemizedlist>
+
+<para/>
+
+To provide these methods, we collect S functions that implement them
+into a named list.  The names will be used as the methods that a
+client can call.  Since all of the functionality is readily available
+in R directly, we merely have to provide the functions directly
+or create a simple wrapper to them.
+
+<invisible>
+<r:code>
+ library(RDCOMServer)
+</r:code> 
+</invisible>
+
+<r:code id="def">
+els = 
+ list(
+     get=get, 
+     set = function(name, value, pos = globalenv(), ...) { 
+             assign(name, value, pos = pos); 
+             TRUE
+           }, 
+     exists = exists,
+     evaluate = function(cmd) {
+        e = parse(text = cmd)
+	eval(e)	
+     },
+     library = library,
+     detach = detach,
+     search = search,
+     print = function(x, ...) { if(is.character(x)) x = get(x)
+                                print(get(x), ...)
+                                NULL},
+     call = function(name, ...) {do.call(name, list(...))},
+     objects = function(name = 1, ...) {objects(name = name, ...)})
+</r:code>
+<para/>
+
+Now that we have the definitions of the methods, we need to tell R how
+to use them. We do this by creating a COM class definition which
+stores the function list as a prototype with which it can create a new
+instance of the COM object<footnote><para>In this case, we will only need
+one COM object representing the R evaluator since there is only one R
+evaluator!</para></footnote>. The function <r:func>SCOMFunctionClass</r:func>
+is used to create the appropriate COM definition.  We also give this
+the name by which clients can refer to this COM class.
+
+<r:code id="register">
+def = SCOMFunctionClass(els, name = "R.Evaluator")
+</r:code>
+
+This function generates a UUID for this COM class and stores it in the
+definition.  In man cases, we will want to ensure that this does not
+change, so we can explicitly create a UUID ourselves and store it in
+the definition.  We do this using the <r:func
+package="Ruuid">getuuid</r:func> function in the
+<r:package>Ruuid</r:package>.
+
+<r:code>
+def@classId = getuuid("d09c2736-593e-42c2-f899-c3f91d4e19d2")
+</r:code>
+
+Now that we have the definition, we need to 
+<itemizedlist>
+<listitem>store this somewhere that R can find it in a different
+session when the COM object is being reated.
+</listitem>
+<listitem>
+ add entries to the windows registry to 
+  associate the name of the COM object with the class UUID
+ and to associate the UUID with the DLL that is used
+  to create and implement the COM object in R (RDCOMServer.dll).
+</listitem>
+</itemizedlist>
+
+The function <r:func>registerCOMClassDef</r:func> performs these two
+actions.
+
+<r:code>
+registerCOMClass(def)
+</r:code>
+
+At this point, the COM class is available to clients and we are
+finished developing and publishing it.
+
+<para/>
+
+A client application can use it quite easily. For example, suppose we
+are writing code in Python and want to use the R evaluator.
+We create an instance of the R evaluator in Python using the
+following code:
+<python:code>
+ from win32com.client import Dispatch
+ R = Dispatch("R.Evaluator")
+</python:code>
+<perl:code>
+ use Win32::OLE;
+ $R = Win32::OLE->new("R.Evaluator");
+</perl:code>
+
+Given this object, we can invoke some of the methods
+it provides to manipulate the state of the R session.
+For example, we can attach a library, query the search path and
+get a list of the variables in different elements
+of the search path.
+<python:code>
+ R.library("mva")
+ print R.search()
+ print R.objects("package:base")
+ print R.objects(2)
+</python:code>
+<perl:code>
+<![CDATA[
+ $R->library("mva");
+ @s = @{$R->search()};
+ print "@s\n";
+ @o = @{$R->objects("package:base")};
+]]>
+</perl:code>
+<para/>
+
+We can send an S command to the R engine and have it evaluate it and
+return the result. This can be convenient when it is easy to construct
+the string.
+<python:code>
+ m = R.evaluate("matrix(rnorm(400), 40, 10)")
+</python:code>
+
+
+In the case that we have values in Python variables, creating the S
+command as a string can be cumbersome.  Instead, it is easier to use
+the values directly in R and call a function.
+<python:code>
+ n = 100
+ m = R.call("rnorm", n)
+</python:code>
+
+<python:code>
+ x = [1,2,3]
+ m = R.call("sum", x)
+</python:code>
+
+<sect1>
+<title>Functions in R</title>
+It is also quite easy for us to implement the R evaluator COM class so
+that it makes all the S functions available as methods.  In this case,
+we would be able to call the function above more naturally as
+<python:code>
+ m = R.rnorm(n)
+</python:code>
+
+To do this, we have to create a dispatch mechanism in R that looks
+first in the local functions that we defined for the R server, and if
+the function is not there, to look in the seach path for a function of
+that name.  To do this, we have to modify the
+<s:func>COMSIDispatchObject</s:func> function.  Firstly, we have to
+use a name manager that can handle arbitrary names, and not just the
+ones in the sealed set of functions.  We can use
+<s:code>COMNameManager</s:code> for this.  Next, we need to modify the
+dispatch for functions to look for the function locally and then on
+the search path.
+Finally, we need to ensure that this dispatch function
+is available to the R session when the engine is requested
+and that the <s:package>RDCOMServer</s:package>
+knows to use it.
+
+<para/>
+Let's first write the dispatch function.
+<s:code group="extendedEngine.S">
+<![CDATA[
+SEngineDispatch = 
+function(funs, properties = character(0),   nameManager = COMNameManager()) 
+{
+  if(length(properties))
+    funs[[".properties"]] = properties
+
+  hasProperty =
+   function(name) {
+     name %in% funs[[".properties"]]
+   }
+
+  getProperty = function(name) get(name)
+  setProperty = function(name, val) assign(name, val, envir = globalenv())
+
+  invoke = 
+    function(id, method, args, namedArgs) {
+     if(length(namedArgs)) {
+       names(args)[1:length(namedArgs)] = names(.ids)[namedArgs]
+     }
+     args = rev(args)
+
+     name = nameManager(id)
+
+     if(method[2] && !method[1] && !hasProperty(name)) {
+       return(COMError("DISP_E_MEMBERNOTFOUND", className = c("COMReturnValue", "COMError")))
+     }
+
+     if(hasProperty(name) && any(method[-1])) {
+       if(method[2])
+         return(getProperty(name))
+       else
+         return(setProperty(name, args[[1]]))
+     } else if(method[1]) {
+         # we are dealing with a method name.
+       if(name %in% names(funs)) {
+         f = funs[[name]]
+         return(eval(as.call(c(f, args)), env = globalenv()))
+       } else if(exists(name, mode="function")) {
+         return(do.call(name, args))
+       }
+     }
+
+         # Looking for an element which corresponds to a function but
+         # method[1] is not set so can't call it.
+     return(COMError("DISP_E_MEMBERNOTFOUND", className = c("COMReturnValue", "COMError")))
+    }
+
+  list(Invoke = invoke, GetNamesOfIDs = nameManager)
+}
+]]>
+</s:code>
+
+That is enough to do the dispatching.  Now we need arrange to have
+this code used when the S engine COM object is created.  The typical
+way to do this is to define a class to represent the COM type
+(e.g. <s:class>SCOMEngine</s:class>) that extends
+<s:class>SCOMFunctionClass</s:class>.  Then we would define a method for
+<s:func>createCOMObject</s:func> which calls our dispatch function
+with the list of methods and property names we want to export.  And we
+need this class and method and the SEngineDispatch function to be
+available to the R session.  While we could add this to the
+<s:package>RDCOMServer</s:package>, it doesn't really belong there in
+general. Instead, we can put the definitions into a source file and
+have the R COM engine read this when the COM object is requested.
+
+<s:code group="extendedEngine.S">
+ setClass("SCOMEngineClass", representation("SCOMFunctionClass"))
+ setMethod("createCOMObject", "SCOMEngineClass", 
+       function(def) {
+         obj = SEngineDispatch(def@functions, def@properties)
+	 .Call("R_COMSObject", obj)
+       })
+</s:code>
+
+Now, when we are registering the function, we first source this file
+to make the <s:class>SCOMEngine</s:class> class definition available.
+(The method is not important at this point.)
+Then we register our specialized object, having
+define our list of functions local to this server as before, as
+<s:code>
+source("extendedEngine.S")
+
+def = SCOMFunctionClass(els, name = "R.Evaluator", def=new("SCOMEngineClass"))
+def@classId = getuuid("d09c2736-593e-42c2-f899-c3f91d4e19d2")
+registerCOMClass(def, profile=paste(getwd(), "extendedEngine.S", sep=.Platform$file.sep))
+</s:code>
+
+Note that we use the <s:func>SCOMFunctionClass</s:func>
+constructor function but provide our own value for
+<s:arg>def</s:arg> to get an object of class
+<s:class>SCOMEngine</s:class>.
+And importantly, we pass the <s:arg>profile</s:arg>
+argument to <s:func>registerCOMClass</s:func>.
+This is the (fully qualified) name of our S source file that
+defines the class, method  and dispatch function.
+This is sourced by R when the object is requested
+and so makes the <s:func>createCOMObject</s:func>
+method available.
+
+<para/>
+This is all a little more awkward than we would like.
+But this is because we are defining a new dispatch mechanism.
+If we are using one of the built-in mechanisms, we don't have
+to do any of this. In the future, we hope to make this easier.
+
+
+</sect1>
+
+<!--
+  <programlisting>
+         <textobject>
+           <textdata fileref="../tests/Sengine.py"/>
+         </textobject>
+     </programlisting>
+-->
+
+</sect1>
+
+</article>

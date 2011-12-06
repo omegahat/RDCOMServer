@@ -1,0 +1,146 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                         "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
+
+
+<article xmlns:r="http://www.r-project.org"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+	 xmlns:s="http://cm.bell-labs.com/stat/S4"
+>
+<articleinfo>
+  <title>A COM interface to some S functions</title>
+  <author>
+   <firstname>Duncan</firstname><lastname>Temple Lang</lastname>
+  </author>
+</articleinfo>
+
+<section>
+ <title>The Server</title>
+<invisible>
+<s:code>
+library(RDCOMServer)
+</s:code>
+</invisible>
+
+We define the COM server as having 3 methods
+that generate samples from different distributions.
+The S functions we expose are 
+<s:func>rnorm</s:func>,
+<s:func>rpois</s:func>
+and <s:func>rbinom</s:func>
+for the Normal, Poisson and Binomial distributions.
+Rather than expose these using the S function names,
+we can use more informative names to non-S users
+such as "normal", "poisson", and "binomial".
+We do this by providing these as the names
+of the character vector identifying the functions to expose.
+
+<para/>
+We use the <s:func>SCOMNamedFunctionClass</s:func>
+class to define the COM class since
+we are exposing top-level function names as COM methods.
+We use the name "RNG" to identify the COM class
+to clients and register the definition with both
+R and the Windows registry.
+<s:code>
+def = SCOMNamedFunctionClass(functions = c(normal="rnorm", poisson="rpois", binomial="rbinom"),
+     			     name = "RNG",
+			     help = "Generate values from probability distributions"
+			    )
+
+def@classId = getuuid("73335FBC-CAE2-4C1A-A7B5-1213E6F930D1")	
+	
+registerCOMClass(def)
+</s:code>
+At this point, we are ready to use the class in client applications.
+</section>
+
+<section>
+ <title>A Perl client</title>
+We can easily use this class in a Perl application
+by loading the Perl COM module (Win32::OLE)
+and using that to create a new "RNG" object.
+<perl:code>
+use Win32::OLE;
+
+$r = Win32::OLE->new("RNG");
+</perl:code>
+
+
+Now that we have the RNG object, we can
+invoke any of the methods.
+We first generate a sample of size 10 from a
+standard normal
+and then another sample but this time specifying
+the mean of the distribution as 50.
+<perl:code>
+ # 10 values from N(0, 1)
+@x = @{$r->normal(10)};
+print "Normal: @x\n";
+
+# Now generate 10 values from a N(50, 1)
+@x = @{$r->normal(10, 50)};
+print "Normal: @x\n";
+</perl:code>
+
+If we wanted to specify just the standard deviation,
+we could use named arguments.
+We do this in perl by giving all the arguments within
+a table/associate array as shown below.
+<perl:code>
+# Now generate 10 values from a N(0, 20)
+@x = @{$r->normal({''=> 10, 'sd' => 20})};
+print "Normal: @x\n";
+</perl:code>
+Note that we can provide arguments by position to the S function
+without a name and simply using ''.
+However, one should almost never use unnamed arguments after 
+named arguments.
+So
+<perl:code>
+@x = @{$r->normal({''=> 10, 'sd' => 20, 'mean' => 100})};
+print "Normal: @x\n";
+</perl:code>
+is fine, but
+<perl:code omit="1">
+@x = @{$r->normal({''=> 10, 'sd' => 20, '' => 100})};
+print "Confused: @x\n";
+</perl:code>
+gets very confused and uses 100 as the value for n
+
+<para/>
+
+Finally, we illustrate the use of the other
+two methods for generating a sample
+from a Poisson and a Binomial distribution.
+<perl:code>
+@x = @{$r->poisson(5, 3)};
+print "Poisson: @x\n";
+
+@x = @{$r->binomial(7, 20, .2)};
+print "Binomial: @x\n";
+</perl:code>
+The arguments are passed to the corresponding S functions
+and one can consult the help for these
+to understand their meaning.
+
+</section>
+
+<python:code>
+from win32com.client import Dispatch
+
+r = Dispatch("RNG")
+
+x = r.normal(10)
+print x
+
+x = r.normal(10, 50)
+print x
+
+x = r.normal(10, sd = 20)
+print x
+</python:code>
+
+
+</article>

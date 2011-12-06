@@ -1,0 +1,149 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                         "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" 
+[
+ <!ENTITY VB "Visual Basic">
+]>
+
+
+<article xmlns:r="http://www.r-project.org"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+         xmlns:vb="http://www.visualbasic.com"
+>
+
+<title>Distributing Distributions</title>
+
+<sect1>
+<title>A Normal Distribution Object</title>
+
+In this example, we expose a Normal distribution as a COM object.
+This class provides methods for 
+<itemizedlist>
+<listitem>
+  generating samples
+</listitem>
+<listitem>
+ computing percentiles
+</listitem>
+<listitem>
+ computing quantiles
+</listitem>
+<listitem>
+ computing densitys
+</listitem>
+<listitem>
+ shifting and scaling the distribution for 
+ subsequent computations
+</listitem>
+</itemizedlist>
+Unlike the S functions to which one must supply the parameters of the
+distribution, objects from this class maintain state and the methods
+have access to these.  To do this, we generate a closure containing
+simple functions that merely call the regular S functions to for
+dealing with the Normal distribution.  These are
+<r:func>rnorm</r:func>, <r:func>pnorm</r:func>,
+<r:func>qnorm</r:func>, <r:func>dnorm</r:func>. 
+<para/>
+
+Because the Normal distribution object has state given by the mean and
+standard deviation, we need a closure in R to "capture" this state.
+We do this by providing a generator function that defines the methods
+with these settings.
+<invisible>
+<r:code>
+ library(RDCOMServer)
+</r:code>
+</invisible>
+
+<r:code>
+<![CDATA[
+g <- function(mu = 0, sigma = 1) 
+{
+  generic <- function(n, abc=10, k="My string") {
+    n + 10
+  }
+
+  sample <- function(n) {
+     rnorm(as.integer(n), mu, sigma)
+  }
+
+  percentile <- function(q, lower = TRUE) {
+    pnorm(as.numeric(q), mu, sigma, lower.tail = as.logical(lower))
+  }
+
+  quantile <- function(p) {
+    qnorm(as.numeric(p), mu, sigma)
+  }
+
+  density <- function(x) {
+     dnorm(as.numeric(x), mu, sigma)
+  }
+
+  deviate <- function() {
+    rnorm(1, mu, sigma)
+  }
+
+  list(sample = sample, percentile = percentile,
+       quantile = quantile, density = density,
+       deviate = deviate,
+       generic = generic,
+       .properties = c("mu", "sigma"),
+       .help = c(sample = "generate a sample of values",
+                percentile = "CDF values from this distribution",
+                quantile = "quantile values from this distribution",
+                density = "values of the density function for this distribution"
+                ))
+}
+]]>
+</r:code>
+
+Now we register this class definition with R and 
+for clients to access.
+<r:code>
+def = SCOMIDispatch(g, "SNormal")
+def@classId = getuuid("c484d2f9-21f5-49ac-8c8d-2007e12245d3")
+registerCOMClass(def)
+</r:code>
+</sect1>
+
+<sect1>
+ <title>The Client</title>
+We can use this class in any of the COM supported classes.  For
+example, consider <VB/> (VB).  We first create an instance of
+this class.  We declare some variables and then create the object.
+<vb:code>
+ Dim N as Object
+ Dim v as Variant
+ 
+ Set N = CreateObject("SNormal")
+</vb:code>
+
+Now we can invoke the objects methods. So we create a sample of 3
+elements.
+<vb:code>
+ v = N.sample(3)
+</vb:code>
+
+Now <vb:var>v</vb:var> is a <vb:type>VARIANT</vb:type>.
+Unlike high-level languages such as Python or Perl,
+<VB/> doesn't convert the array returned from R directly 
+into a VB array. Instead, we can access it via the
+variant and ask for its upper and lower indices and query 
+its contents.
+<vb:code>
+   Debug.Print TypeName(v)
+   Debug.Print UBound(v)
+   Debug.Print LBound(v)
+   Debug.Print v(1)
+</vb:code>
+We can iterate over its entries
+as follows
+<vb:code>
+   For i = LBound(v) To UBound(v)
+      Debug.Print v(i)
+   Next i
+</vb:code>
+
+</sect1>
+</article>	

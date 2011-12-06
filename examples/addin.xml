@@ -1,0 +1,364 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                         "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
+
+
+<article xmlns:r="http://www.r-project.org"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+	 xmlns:s="http://cm.bell-labs.com/stat/S4"
+>
+<articleinfo>
+  <title>A COM interface to some S functions</title>
+  <author>
+   <firstname>Duncan</firstname><lastname>Temple Lang</lastname>
+  </author>
+</articleinfo>
+
+<abstract>
+This is a collection of notes that are gathered
+as we try to construct an Add-in for Excel
+from within R.
+In other words, we will write R code
+that serves as an Add-In component for
+Excel.
+There are several things we might want to do.
+<itemizedlist>
+<listitem>
+Add menu items to the main Excel menu bar
+</listitem>
+<listitem>
+Add buttons and other controls to the main Excel
+toolbars.
+</listitem>
+<listitem>
+Make R functions available as Excel macros/functions/procedures.
+</listitem>
+</itemizedlist>
+</abstract>
+
+
+<section>
+<title>Information</title>
+A DCOM add-in for Office
+must implement the IDTExtensibility2 interface.
+This is defined in the 
+MSADDNDR.DLL file in
+<directory>C:/Program Files/Common Files/DESIGNER</directory>
+
+<s:code>
+library(SWinTypeLibs)
+lib = LoadTypeLib("C:/Program Files/Common Files/DESIGNER/MSADDNDR.DLL")
+</s:code>
+<para/>
+
+The IDTExtensibility2 entry in the library
+is an alias. We can resolve that
+using <s:func packageVersion="0.4-3">getElements</s:func>
+and, as we might expect, it is simply
+an alias for the 
+actual "_IDTExtensibility2" interface.
+So from now on, we talk about that
+interface.
+
+<para/>
+
+We can compute all the methods
+and member ids that we will implement
+in the usual way for an event server.
+The methods,  as documented in many places,
+are
+<itemizedlist>
+<listitem>OnConnection</listitem>
+<listitem>OnDisconnection</listitem>
+<listitem>OnAddInsUpdate</listitem>
+<listitem>OnStartupComplete</listitem>
+<listitem>OnBeginShutdown</listitem>
+</itemizedlist>
+
+The OnConnection method is called
+by the host application (e.g. Excel) 
+when it attempts to load and enable
+the add-in.
+This is where we get to do computations
+that initialize the add-in
+and make its functionality available
+to the host application and its users.
+This is one of the two most important of the methods
+from our perspective. It is the one that
+gets us started.
+We have to be a little careful
+about adding GUI components, etc.
+within this method as the host application
+may not be fully initialized.
+We can tell this from how the host 
+is loading the add-in,
+and if it is an issue,
+we can use the method OnStartupComplete
+to do the computations.
+
+<para/>
+The OnConnection method will be called with 4
+arguments.
+The first is the identity
+of the host application,
+e.g. the Excel.Application
+instance. This allows us to access
+the command bar entries (e.g. menus and toolbars), 
+and generally the state of the application.
+
+The second argument is a value
+from an enumeration that 
+identifies how the add-in is being 
+"loaded" or connected.
+
+The value is an 
+element of the enumeration vector
+<s:var>ext_ConnectMode</s:var>.
+This is defined in
+the type library 
+as we can see from the
+command
+<s:expr>getElements(lib[["ext_ConnectMode"]])</s:expr>
+The definition in R for the enumeration would be something like
+<s:code>
+c("ext_cm_AfterStartup" = 0,
+  "ext_cm_Startup" = 1,
+  "ext_cm_External" = 2,
+  "ext_cm_CommandLine" = 3)
+</s:code>
+and we would be able to compare
+the value of <s:arg>mode</s:arg> in our function
+to either the integer value or the name.
+<question>
+In the future, the argument in the call will be coerced to the appropriate
+type and will have the name and the value.
+</question>
+
+
+
+<para/>
+The third arugment is the
+instance of the data structure that
+represents the COM add-in for the host
+application.
+
+<para/>
+The final argument is an add-in-defined 
+value that can be  used to store information.
+This is an array of Variant elements.
+Is this provided by the host so that 
+the add-in can store information,
+or is it available somehow through
+the registration.
+
+
+<para/>
+
+Let's build a simple example of
+an addin. All that it is responsible for
+doing is adding a new  button
+to the standard toolbar.
+We can do this in the OnConnection
+method as we will manually instantiate
+the add-in after Excel has started.
+<s:code>
+<![CDATA[
+OnConnection =
+function(app, mode, AddInInst, custom)
+{
+  ExcelHost <<- app
+
+   # Get the "Standard" toolbar, i.e. the main one.
+  std = app[["CommandBars"]]$Item(3)
+   # Add a new button to it....
+  btn = std$Controls()$Add(1)
+   # and set its title.
+  btn[["Caption"]] = "RDCOM Addin"
+  btn[["Style"]] = 2
+
+  TRUE
+}
+]]>
+</s:code>
+
+Our next job is to 
+make the add-in available
+to Excel.
+
+There are two steps this.
+The first is to make this a COM 
+interface and register it.
+The second task is to 
+tell Excel about it.
+
+<section>
+<title>Making a COM Interface</title>
+At present, we use tools from the
+<s:package>RDCOMEvents</s:package>
+package  eventhough they should be in
+the <s:package>RDCOMServer</s:package> package.
+The function
+<s:func>createCOMEventServerInfo</s:func>
+allows us to 
+merge all the details for a COM server
+implementing a particular interface
+(i.e. IDTExtensibility2)
+and our particular R functions that
+implement the methods.
+In essence, this provides a template for
+creating an instance of the COM interface.
+
+<para/>
+We use this function by calling
+it with our R functions which
+will serve as methods,
+i.e. the <s:func>OnConnection</s:func> function we
+wrote above, and
+the information about the
+IDTExtensibility2 interface.
+It uses the latter to build
+information about the names
+of the methods and create
+simple stub functions for each.
+It also caches the information about
+the names and the identifiers to which they map.
+This is used at run-time
+by the COM server when its methods are
+queried and invoked.
+
+<s:code>
+def = createCOMServerInfo(lib[["_IDTExtensibility2"]],
+                          methods = list(OnConnection = OnConnection),
+                          name = "RTestAddIn",
+                          help = "Test Add-in for Excel implemented in R")
+
+def@classId = "a8ddb932-7290-4077-05ae-b9a58db7a97f"
+
+library(RCOMServer)
+registerCOMClass(def, profile = "library(RDCOMEvents)")
+</s:code>
+
+The result is an object of class <s:class>COMServerInfo</s:class>
+which contains the  methods, the name-identifier mapping
+and the GUID of the interface being implemented.
+The registration stores this object so that it can be used
+when the R DCOM  server is requested.
+
+<para/>
+Note that we add a <s:arg>profile</s:arg> argument.
+This is an R expression that is executed when the
+object is requested.
+
+<para/>
+Armed with this template, the function
+<s:func>createCOMEventServer</s:func>
+creates the low-level, native COM
+object which is implemented via the calls
+to the R functions.
+When the COM object is requested by the host
+application (e.g. Excel), 
+the R COM class factory arranges to use 
+this function to create an instance
+of the COM interface.
+
+</section>
+
+
+
+<section>
+<title>Registering the Add-In</title>
+We need to tell Excel and any other Office
+application about the add-in.
+We do this by registering it in the
+usual way for a server, and also
+putting an entry in the host application's
+registry entry.
+We have to find more information about the
+precise location and the nature of the content
+we must register.
+See Chapter 13 (page 268) of 
+Excel 2003 VBA.
+The basic gist is that it  is done in 
+HKEY_CURRENT_USER\Software\Microsoft\Office\11.0\Excel\Addins
+within the registry.
+(The 11.0 I added, and it may not be applicable.)
+In other documents, e.g. http://support.microsoft.com/?kbid=302896,
+it says to add the entry to
+HKEY_CURRENT_USER\Software\Microsoft\Excel\Addins\
+<question>We need to figure this out.</question>
+
+<s:code>
+rpath = createRegistryPath(c("Software", "Microsoft", "Office", "11.0", "Excel",  
+                             "Addins")
+                           "HKEY_CURRENT_USER")
+
+np = createRegistryKey(rpath, "RDCOMAddin")
+setRegistryValue(np, "FriendlyName", "RDCOM Add-in example")
+setRegistryValue(np, "Description", "An example of a DCOM Add-in written in R")
+setRegistryValue(np, "LoadBehavior", 8)
+setRegistryValue(np, "CommandLineSafe", FALSE)
+</s:code>
+
+</section>
+
+
+</section>
+
+
+<section>
+<title>Automating the Add-In Connection</title>
+At this point, we have done much of the conceptual work.
+We can now focus on tweaking the Add-in to behave
+slightly different.
+For instance, we may want it to be loaded whenever
+Excel starts.
+
+<s:code file="addInClosure.S">
+<![CDATA[
+function()
+{
+
+addButton = 
+function(app = Host)
+{
+  std = app[["CommandBars"]]$Item(3)
+  btn = std$Controls()$Add(1)
+  btn[["Caption"]] = "RDCOM Addin"
+  btn[["Style"]] = 2
+}
+
+OnConnection =
+function(app, mode, AddInInst, custom)
+{
+ Host <<- app
+}
+
+OnDisconnection =
+function(app, mode, AddInInst, custom)
+{
+ Host <<- NULL
+}
+
+OnStartupComplete =
+function()
+{
+  addButton(Host)
+}
+
+ list(OnConnection = OnConnection,
+      OnStartupComplete = OnStartupComplete)
+}
+]]>
+</s:code>
+</section>
+
+
+<section>
+<title>Bibliography</title>
+
+See http://support.microsoft.com/?kbid=302896
+
+</section>
+
+</article>

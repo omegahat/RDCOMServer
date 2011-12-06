@@ -1,0 +1,11 @@
+EXPORTS
+ R_RCOMEnvironmentObject
+ R_RCOMSObject
+ R_createCOMErrorCodes
+ R_create2DArray
+ R_RCOMSObjectGetDef
+ R_RCOMSObjectSetDef
+ R_getNativeRDCOMClass
+ R_getDynamicVariantValue
+ R_setDynamicVariantValue
+

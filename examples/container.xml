@@ -1,0 +1,122 @@
+<?xml version="1.0"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                         "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
+
+
+<article xmlns:r="http://www.r-project.org"
+         xmlns:python="http://www.python.org"
+         xmlns:perl="http://www.perl.org"
+         xmlns:s="http://cm.bell-labs.com/stat/S4"
+         xmlns:com="http://www.microsoft.com"
+>
+
+  <title>A COM interface to the S evaluator</title>
+
+<section>
+<title>COM Containers in S</title>
+
+We are used to using containers in other COM clients.  For example, in
+Excel the <com:class>Workbooks</com:class> and the
+<com:class>Worksheets</com:class> classes are containers for elements
+of the class <com:class>Workbook</com:class> and
+<com:class>Worksheet</com:class> respectively.  The container supports
+a reasonably standard interface, providing properties/methods
+<com:method>Item</com:method>, <com:method>Count</com:method>,
+<com:method>Add</com:method> and <com:method>Delete</com:method>.
+
+<para/>
+
+Now, suppose we want to implement a similarl concept in S.  In our
+case, we might create a general class definition for this and provide
+the methods for any type of container.
+
+<s:code>
+<![CDATA[
+COMContainerGenerator = 
+function(elementDefn) {
+
+ .containerElements = list()
+
+ newElement = function() {
+   .Call("R_RCOMSObject", elementDefn, PACKAGE = "RDCOMServer")
+ }
+
+ add = function() { # before, after, count, type
+   n = length(.containerElements)
+   tmp = newElement()
+   .containerElements[[n+1]] <<- tmp
+   tmp
+ }
+
+ count = function() {
+   length(.containerElements)
+ }
+
+ delete = function(which) {
+  .containerElements <<- .containerElements[-which]
+  TRUE 
+ }
+
+ item = function(which) {
+  .containerElements[[which]]
+ }
+
+ list(Item = item, Delete = delete, Count = count, Add = add)
+}
+]]>
+</s:code>
+
+We can use these generic methods to provide a container object in S.
+We can define a COM container class for S that stores definitions
+of particular container types.
+
+<s:code>
+setClass("SCOMContainerClass", representation("SCOMClass",
+                                              elementDefintion = "SCOMClass"))
+</s:code>
+
+
+<s:code>
+SCOMContainerClass = 
+function(elementDefn, name, help = "", def = new("SCOMContainerClass"), where = "")
+{
+  def = .initSCOMClas(def, name = name, help=help) 
+  def@elementDefinition = elementDefn
+}
+</s:code>
+
+Now we can define a method for <s:func>createCOMObject</s:func>
+that creates a container.
+<s:code>
+setMethod("createCOMObject", 
+           "SCOMContainerClass",
+           function(def) {
+	    funcs = COMContainerGenerator(def@elementDefinition)
+            obj = COMSIDispatchObject(funcs)            
+            .Call("R_RCOMSObject", obj, PACKAGE="RDCOMServer")
+           })
+</s:code>
+
+So now let's look at an example.  Suppose we want to have a container
+of elements of Normal distributions, e.g the SNormal class defined in
+<link>Sobject.xml</link>.  We will assume that this class is already
+registered and that we know its UUID,
+<uuid>c484d2f9-21f5-49ac-8c8d-2007e12245d3</uuid>.
+
+<s:code>
+edef = GetCOMClassDef("{c484d2f9-21f5-49ac-8c8d-2007e12245d3}"
+def = SCOMContainerClass(edef, "NormalManager")
+registerCOMClass(def)
+</s:code>
+
+Now, clients can create instances of this container.
+<perl:code>
+mgr = Win32::OLE->new("NormalManager");
+
+%params = ('AB' => {0, 10}, 'CD' => {1, 3}, 'OK' = {-10, 2});
+foreach $i keys($parms))
+</perl:code>
+
+
+</section>
+</article>

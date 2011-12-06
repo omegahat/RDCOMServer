@@ -1,0 +1,25 @@
+http://support.microsoft.com/default.aspx?scid=kb;EN-US;136885
+
+http://support.microsoft.com/default.aspx?scid=kb;en-us;176399
+
+Write permission into the registry.
+  Need Administrator priviliges.
+
+
+
+
+Interfaces and IIDs
+
+IMarshal  00000003-0000-0000-C000-000000000046 
+
+? IUnknown  00000000-0000-0000-C000-000000000046 
+
+IMarshaller 0000001B-0000-0000-C000-000000000046 
+
+IStdMarshallInfo  00000018-0000-0000-C000-000000000046 
+
+IExternalConnection 000000100-C000-000000000046 
+
+4C1E39E1-E3E3-4296-AA86-EC938D896E92
+
+_CommandBarButtonEvents   000C0351-0000-0000-C000-000000000046
